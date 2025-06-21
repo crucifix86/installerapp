@@ -542,13 +542,16 @@ FLUSH PRIVILEGES;";
             // 5. Database Setup
             DownloadAndImportPanelDb(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
 
-            // 6. Laravel Setup
+            // 6. Configure Encryption
+            ConfigurePanelEncryption(client, userPassword, useSudo, panelDir);
+
+            // 7. Laravel Setup
             RunLaravelSetup(client, userPassword, useSudo, panelDir);
 
-            // 7. Create Admin User and get credentials
+            // 8. Create Admin User and get credentials
             string panelCredentials = CreatePanelAdminUser(client, userPassword, useSudo, panelDir);
 
-            // 8. Configure Apache
+            // 9. Configure Apache
             Log("Modifying Apache configuration...");
             ExecuteCommand(client, userPassword, $"wget -q -O {apacheConf} {apacheConfUrl}", useSudo);
             ExecuteCommand(client, userPassword, $"sed -i \"s|DocumentRoot /var/www/html|DocumentRoot /var/www/html/panel/public|\" {apacheDefaultSite}", useSudo, true);
@@ -557,7 +560,7 @@ FLUSH PRIVILEGES;";
             Log("Restarting apache2 service...");
             ExecuteCommand(client, userPassword, "systemctl restart apache2", useSudo);
 
-            // 9. Cleanup
+            // 10. Cleanup
             ExecuteCommand(client, userPassword, "rm /tmp/dbo.sql", useSudo);
 
             return panelCredentials;
@@ -588,19 +591,22 @@ FLUSH PRIVILEGES;";
             // 4. Database Setup
             DownloadAndImportPanelDb(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
 
-            // 5. Laravel Setup
+            // 5. Configure Encryption
+            ConfigurePanelEncryption(client, userPassword, useSudo, panelDir);
+
+            // 6. Laravel Setup
             RunLaravelSetup(client, userPassword, useSudo, panelDir);
 
-            // 6. Create Admin User
+            // 7. Create Admin User
             string panelCredentials = CreatePanelAdminUser(client, userPassword, useSudo, panelDir);
 
-            // 7. Configure Apache
+            // 8. Configure Apache
             Log("Modifying Apache configuration...");
             ExecuteCommand(client, userPassword, $"wget -q -O {apacheConf} {apacheConfUrl}", useSudo);
             Log("Restarting httpd service...");
             ExecuteCommand(client, userPassword, "systemctl restart httpd", useSudo);
 
-            // 8. Cleanup
+            // 9. Cleanup
             ExecuteCommand(client, userPassword, "rm /tmp/dbo.sql", useSudo);
 
             return panelCredentials;
@@ -641,6 +647,26 @@ FLUSH PRIVILEGES;";
 
             Log($"Renaming {envExampleFile} to {envFile}");
             ExecuteCommand(client, userPassword, $"mv {envExampleFile} {envFile}", useSudo);
+        }
+
+        private void ConfigurePanelEncryption(SshClient client, string userPassword, bool useSudo, string panelDir)
+        {
+            LogSection("Configuring Panel Encryption");
+            string configFile = $"{panelDir}/config/pw-config.php";
+            Log($"Checking if {configFile} exists...");
+            string checkFileCmd = $"test -f {configFile} && echo 'exists'";
+            string fileExists = ExecuteCommand(client, userPassword, checkFileCmd, useSudo, true);
+
+            if (fileExists.Trim() == "exists")
+            {
+                Log($"Updating encryption type in {configFile}...");
+                string command = $"sed -i \"s/'encryption_type' => 'md5'/'encryption_type' => 'base64'/\" {configFile}";
+                ExecuteCommand(client, userPassword, command, useSudo);
+            }
+            else
+            {
+                Log($"Warning: Configuration file {configFile} not found. Skipping encryption type update.");
+            }
         }
 
         private void InstallComposerOnDebian(SshClient client, string userPassword, bool useSudo)
