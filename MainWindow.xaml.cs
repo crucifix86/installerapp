@@ -376,6 +376,379 @@ FLUSH PRIVILEGES;";
         }
         #endregion
 
+        #region --- PW-Panel Installation ---
+
+        /// <summary>
+        /// This is the new method to be called by a new "Install Panel" button in your UI.
+        /// </summary>
+        private async void btnInstallPanel_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(txtHost.Text) ||
+                string.IsNullOrWhiteSpace(txtUsername.Text) ||
+                string.IsNullOrWhiteSpace(txtPassword.Password))
+            {
+                MessageBox.Show("Please fill in all SSH connection details.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            btnInstallPanel.IsEnabled = false;
+            txtLog.Clear();
+
+            // --- NEW: Prompt user for the credentials file ---
+            OpenFileDialog openFileDialog = new OpenFileDialog
+            {
+                Title = "Select Database Credentials File",
+                Filter = "Text Files (*.txt)|*.txt|All files (*.*)|*.*"
+            };
+
+            if (openFileDialog.ShowDialog() != true)
+            {
+                MessageBox.Show("Panel installation cancelled. You must select a credentials file.", "Cancelled", MessageBoxButton.OK, MessageBoxImage.Warning);
+                btnInstallPanel.IsEnabled = true;
+                return;
+            }
+
+            string filePath = openFileDialog.FileName;
+            string dbUser, dbPassword;
+
+            try
+            {
+                string fileContent = File.ReadAllText(filePath);
+                dbUser = new Regex(@"Username:\s*(.+)").Match(fileContent).Groups[1].Value.Trim();
+                dbPassword = new Regex(@"Password:\s*(.+)").Match(fileContent).Groups[1].Value.Trim();
+
+                if (string.IsNullOrWhiteSpace(dbUser) || string.IsNullOrWhiteSpace(dbPassword))
+                {
+                    throw new Exception("File format is incorrect. Could not find Username or Password.");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not read credentials from the selected file.\n\nError: {ex.Message}\n\nPlease ensure it is the correct file and format.", "File Read Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                btnInstallPanel.IsEnabled = true;
+                return;
+            }
+
+            string host = txtHost.Text;
+            string username = txtUsername.Text;
+            string userPassword = txtPassword.Password;
+            string panelCredentials = null;
+
+            try
+            {
+                Log("--- Starting PW-Panel Installation ---");
+                Log($"Read credentials from '{Path.GetFileName(filePath)}': User='{dbUser}'");
+
+                panelCredentials = await Task.Run<string>(() =>
+                {
+                    var connectionInfo = new ConnectionInfo(host, username, new PasswordAuthenticationMethod(username, userPassword));
+                    using (var client = new SshClient(connectionInfo))
+                    {
+                        Log($"Connecting to {host}...");
+                        client.Connect();
+                        Log("SSH Connection Successful.");
+
+                        string creds = RunPanelInstallation(client, userPassword, dbUser, dbPassword);
+
+                        client.Disconnect();
+                        return creds;
+                    }
+                });
+
+                Log("--- PW-Panel Installation Finished Successfully! ---");
+                MessageBox.Show("Panel installation complete! Check logs for details.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                Log($"--- A CRITICAL ERROR OCCURRED during Panel Installation ---");
+                Log($"ERROR: {ex.Message}");
+                MessageBox.Show($"An error occurred during panel installation:\n\n{ex.Message}", "Installation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(panelCredentials))
+                {
+                    SaveCredentialsLocally("Panel Admin Credentials", panelCredentials);
+                }
+                btnInstallPanel.IsEnabled = true;
+            }
+        }
+
+        private string RunPanelInstallation(SshClient client, string userPassword, string dbUser, string dbPassword)
+        {
+            // --- Sudo Detection Logic ---
+            bool useSudo = true;
+            try
+            {
+                var testCmd = client.CreateCommand("sudo -v");
+                testCmd.Execute();
+                var error = testCmd.Error;
+                if (!string.IsNullOrEmpty(error) && error.Contains("sudo: command not found"))
+                {
+                    useSudo = false;
+                }
+            }
+            catch (Exception)
+            {
+                useSudo = false;
+            }
+
+            Log(useSudo ? "Sudo is available." : "Sudo command not found. Assuming root session.");
+
+            // --- OS Detection and Installation ---
+            string osRelease = ExecuteCommand(client, userPassword, "cat /etc/os-release", useSudo);
+            if (osRelease.Contains("ID=fedora") || osRelease.Contains("ID_LIKE=rhel"))
+            {
+                Log("Detected Fedora/RHEL-based system.");
+                return InstallPanelOnFedora(client, userPassword, useSudo, dbUser, dbPassword);
+            }
+            else if (osRelease.Contains("ID=debian") || osRelease.Contains("ID_LIKE=debian") || osRelease.Contains("ID=ubuntu"))
+            {
+                Log("Detected Debian/Ubuntu-based system.");
+                return InstallPanelOnDebian(client, userPassword, useSudo, dbUser, dbPassword);
+            }
+            else
+            {
+                throw new Exception("Unsupported OS. Please use a Fedora/RHEL or Debian/Ubuntu based distribution.");
+            }
+        }
+
+        private string InstallPanelOnDebian(SshClient client, string userPassword, bool useSudo, string dbUser, string dbPassword)
+        {
+            LogSection("Panel Installation on Debian/Ubuntu");
+
+            // --- Variables for Debian/Ubuntu ---
+            string destDir = "/var/www/html";
+            string finalDir = "panel";
+            string panelDir = $"{destDir}/{finalDir}";
+            string apacheDefaultSite = "/etc/apache2/sites-available/000-default.conf";
+            string apacheConf = "/etc/apache2/apache2.conf";
+            string apacheConfUrl = "http://havenpwi.net/installs/New%20Installer/panel/apache2.conf";
+
+            // 1. Install dependencies and download files
+            ExecuteCommand(client, userPassword, "apt-get update -y", useSudo);
+            ExecuteCommand(client, userPassword, "apt-get install -y unzip", useSudo);
+            DownloadAndExtractPanel(client, userPassword, useSudo, destDir, finalDir);
+
+            // 2. Configure .env
+            ConfigurePanelEnvFile(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
+
+            // 3. Install Composer
+            InstallComposerOnDebian(client, userPassword, useSudo);
+
+            // 4. Set Permissions
+            SetPanelPermissions(client, userPassword, useSudo, panelDir);
+
+            // 5. Database Setup
+            DownloadAndImportPanelDb(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
+
+            // 6. Laravel Setup
+            RunLaravelSetup(client, userPassword, useSudo, panelDir);
+
+            // 7. Create Admin User and get credentials
+            string panelCredentials = CreatePanelAdminUser(client, userPassword, useSudo, panelDir);
+
+            // 8. Configure Apache
+            Log("Modifying Apache configuration...");
+            ExecuteCommand(client, userPassword, $"wget -q -O {apacheConf} {apacheConfUrl}", useSudo);
+            ExecuteCommand(client, userPassword, $"sed -i \"s|DocumentRoot /var/www/html|DocumentRoot /var/www/html/panel/public|\" {apacheDefaultSite}", useSudo, true);
+            Log("Enabling mod_rewrite...");
+            ExecuteCommand(client, userPassword, "a2enmod rewrite", useSudo);
+            Log("Restarting apache2 service...");
+            ExecuteCommand(client, userPassword, "systemctl restart apache2", useSudo);
+
+            // 9. Cleanup
+            ExecuteCommand(client, userPassword, "rm /tmp/dbo.sql", useSudo);
+
+            return panelCredentials;
+        }
+
+        private string InstallPanelOnFedora(SshClient client, string userPassword, bool useSudo, string dbUser, string dbPassword)
+        {
+            LogSection("Panel Installation on Fedora/RHEL");
+
+            // --- Variables for Fedora/RHEL ---
+            string destDir = "/var/www/html";
+            string finalDir = "panel";
+            string panelDir = $"{destDir}/{finalDir}";
+            string apacheConf = "/etc/httpd/conf/httpd.conf";
+            string apacheConfUrl = "http://havenpwi.net/installs/New%20Installer/panel/httpd.conf";
+
+            // 1. Install dependencies and download files
+            ExecuteCommand(client, userPassword, "dnf check-update -y", useSudo);
+            ExecuteCommand(client, userPassword, "dnf install -y unzip composer", useSudo);
+            DownloadAndExtractPanel(client, userPassword, useSudo, destDir, finalDir);
+
+            // 2. Configure .env
+            ConfigurePanelEnvFile(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
+
+            // 3. Set Permissions
+            SetPanelPermissions(client, userPassword, useSudo, panelDir);
+
+            // 4. Database Setup
+            DownloadAndImportPanelDb(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
+
+            // 5. Laravel Setup
+            RunLaravelSetup(client, userPassword, useSudo, panelDir);
+
+            // 6. Create Admin User
+            string panelCredentials = CreatePanelAdminUser(client, userPassword, useSudo, panelDir);
+
+            // 7. Configure Apache
+            Log("Modifying Apache configuration...");
+            ExecuteCommand(client, userPassword, $"wget -q -O {apacheConf} {apacheConfUrl}", useSudo);
+            Log("Restarting httpd service...");
+            ExecuteCommand(client, userPassword, "systemctl restart httpd", useSudo);
+
+            // 8. Cleanup
+            ExecuteCommand(client, userPassword, "rm /tmp/dbo.sql", useSudo);
+
+            return panelCredentials;
+        }
+
+        private void DownloadAndExtractPanel(SshClient client, string userPassword, bool useSudo, string destDir, string finalDir)
+        {
+            LogSection("Downloading and Extracting Panel Files");
+            string sourceUrl = "https://github.com/hrace009/PW-Panel/archive/refs/heads/master.zip";
+            string tempZip = "/tmp/panel.zip";
+            string extractedDirName = "PW-Panel-master";
+
+            Log("Downloading the ZIP file...");
+            ExecuteCommand(client, userPassword, $"wget -q '{sourceUrl}' -O {tempZip}", useSudo);
+
+            Log($"Creating directory: {destDir} if it doesn't exist...");
+            ExecuteCommand(client, userPassword, $"mkdir -p {destDir}", useSudo);
+
+            Log($"Extracting the ZIP file to {destDir}...");
+            ExecuteCommand(client, userPassword, $"unzip -q -o {tempZip} -d {destDir}", useSudo);
+
+            Log($"Renaming directory to '{finalDir}'...");
+            ExecuteCommand(client, userPassword, $"mv {destDir}/{extractedDirName} {destDir}/{finalDir}", useSudo);
+
+            ExecuteCommand(client, userPassword, $"rm {tempZip}", useSudo);
+        }
+
+        private void ConfigurePanelEnvFile(SshClient client, string userPassword, bool useSudo, string panelDir, string dbUser, string dbPass)
+        {
+            LogSection("Configuring .env file");
+            string envExampleFile = $"{panelDir}/.env.example";
+            string envFile = $"{panelDir}/.env";
+
+            Log($"Updating database settings in {envExampleFile}...");
+            ExecuteCommand(client, userPassword, $"sed -i 's/DB_DATABASE=laravel/DB_DATABASE=pw/' {envExampleFile}", useSudo);
+            ExecuteCommand(client, userPassword, $"sed -i 's/DB_USERNAME=root/DB_USERNAME={dbUser}/' {envExampleFile}", useSudo);
+            ExecuteCommand(client, userPassword, $"sed -i 's/DB_PASSWORD=/DB_PASSWORD={dbPass}/' {envExampleFile}", useSudo);
+
+            Log($"Renaming {envExampleFile} to {envFile}");
+            ExecuteCommand(client, userPassword, $"mv {envExampleFile} {envFile}", useSudo);
+        }
+
+        private void InstallComposerOnDebian(SshClient client, string userPassword, bool useSudo)
+        {
+            LogSection("Installing Composer on Debian");
+            Log("Checking for existing composer installations...");
+            string composerCheck = ExecuteCommand(client, userPassword, "command -v composer", useSudo, true);
+            if (!string.IsNullOrWhiteSpace(composerCheck))
+            {
+                string composerVersion = ExecuteCommand(client, userPassword, "composer --version", useSudo, true);
+                if (composerVersion.Contains("Composer version 1."))
+                {
+                    Log("Composer 1 found, uninstalling...");
+                    ExecuteCommand(client, userPassword, "apt-get remove --purge composer -y", useSudo);
+                }
+                else
+                {
+                    Log("Composer 2 or newer already installed.");
+                    return;
+                }
+            }
+
+            Log("Downloading Composer installer...");
+            string installerUrl = "https://getcomposer.org/installer";
+            string installerFile = "/tmp/composer-installer.php";
+            ExecuteCommand(client, userPassword, $"wget -q '{installerUrl}' -O {installerFile}", useSudo);
+
+            Log("Running Composer installer...");
+            ExecuteCommand(client, userPassword, $"php {installerFile} --install-dir=/usr/local/bin --filename=composer", useSudo);
+
+            ExecuteCommand(client, userPassword, $"rm {installerFile}", useSudo);
+        }
+
+        private void SetPanelPermissions(SshClient client, string userPassword, bool useSudo, string panelDir)
+        {
+            LogSection("Setting Panel Permissions");
+            Log("Setting permissions for Laravel directories...");
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && chmod -R 777 storage bootstrap app config", useSudo);
+        }
+
+        private void DownloadAndImportPanelDb(SshClient client, string userPassword, bool useSudo, string panelDir, string dbUser, string dbPass)
+        {
+            LogSection("Downloading and Importing Panel Database");
+            string sqlFileUrl = "http://havenpwi.net/installs/New%20Installer/panel/dbo.sql";
+            string sqlFileLocal = "/tmp/dbo.sql";
+
+            Log("Downloading the SQL file...");
+            ExecuteCommand(client, userPassword, $"wget -q '{sqlFileUrl}' -O {sqlFileLocal}", useSudo);
+
+            Log("Importing the SQL file...");
+            ExecuteCommand(client, userPassword, $"mysql -u'{dbUser}' -p'{dbPass}' pw < {sqlFileLocal}", useSudo);
+        }
+
+        private void RunLaravelSetup(SshClient client, string userPassword, bool useSudo, string panelDir)
+        {
+            LogSection("Running Laravel Setup");
+            string phpPath = "php"; // Assuming php is in the PATH
+            string composerPath = "composer"; // Assuming composer is in the PATH
+
+            Log("Running composer install...");
+            // Using 'yes' to auto-confirm any prompts.
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {composerPath} install --optimize-autoloader --no-dev", useSudo, false, 600);
+
+            Log("Caching configuration...");
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan config:cache", useSudo);
+
+            Log("Running composer install again..."); // As per script
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {composerPath} install", useSudo, false, 600);
+
+            Log("Running database migrations...");
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan migrate", useSudo);
+
+            Log("Seeding the database...");
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan db:seed --class=ServiceSeeder", useSudo);
+
+            Log("Generating application key...");
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan key:generate", useSudo);
+        }
+
+        private string CreatePanelAdminUser(SshClient client, string userPassword, bool useSudo, string panelDir)
+        {
+            LogSection("Creating Panel Admin User");
+            string adminUsername = "admin";
+            string adminEmail = "randomperson@gmail.com";
+            string adminFullname = "randomdev";
+
+            Log("Creating admin user...");
+            string command = $"cd {panelDir} && echo -e '{adminUsername}\\n{adminEmail}\\n{adminFullname}\\n' | php artisan pw:createAdmin";
+            string adminOutput = ExecuteCommand(client, userPassword, command, useSudo);
+
+            var match = Regex.Match(adminOutput, @"Password: (.*)");
+            if (!match.Success)
+            {
+                throw new Exception("Failed to extract the admin password from the output.");
+            }
+            string adminPassword = match.Groups[1].Value.Trim();
+
+            Log($"Admin user created: Username={adminUsername}, Password={adminPassword}");
+
+            string credentialsContent = $"Username: {adminUsername}\nEmail: {adminEmail}\nFull Name: {adminFullname}\nPassword: {adminPassword}\n";
+            Log("Panel credentials generated. Will prompt to save locally after installation.");
+
+            return credentialsContent;
+        }
+
+
+        #endregion
+
         #region --- SSH and Logging Helpers ---
 
         private void LogSection(string section) => Log($"\n--- {section} ---\n");

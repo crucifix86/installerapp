@@ -13,7 +13,6 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Section 1: Connection Details -->
         <GroupBox Header="Server Connection" Grid.Row="0" Padding="10">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -37,7 +36,6 @@
             </Grid>
         </GroupBox>
 
-        <!-- Section 2: Version and Options -->
         <Grid Grid.Row="1" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -56,10 +54,14 @@
             </GroupBox>
         </Grid>
 
-        <!-- Section 3: Install Button and Log Output -->
-        <StackPanel Grid.Row="2" Margin="0,15,0,0">
-            <Button x:Name="btnInstall" Content="Begin Installation" Padding="10" FontWeight="Bold" Click="btnInstall_Click"/>
-        </StackPanel>
+        <Grid Grid.Row="2" Margin="0,15,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button x:Name="btnInstall" Content="Begin Installation" Grid.Column="0" Padding="10" FontWeight="Bold" Click="btnInstall_Click" Margin="0,0,5,0"/>
+            <Button x:Name="btnInstallPanel" Content="Install PW-Panel" Grid.Column="1" Padding="10" FontWeight="Bold" Click="btnInstallPanel_Click" Margin="5,0,0,0"/>
+        </Grid>
 
         <ScrollViewer Grid.Row="3" Margin="0,15,0,0" VerticalScrollBarVisibility="Auto">
             <TextBox x:Name="txtLog" IsReadOnly="True" Background="#2E2E2E" Foreground="WhiteSmoke" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
