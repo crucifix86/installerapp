@@ -4,6 +4,56 @@
              xmlns:local="clr-namespace:installerapp"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <!-- Global Color Resources -->
+        <SolidColorBrush x:Key="GlobalPrimaryBackground" Color="#1e1e1e"/>
+        <SolidColorBrush x:Key="GlobalSecondaryBackground" Color="#2d2d30"/>
+        <SolidColorBrush x:Key="GlobalAccentColor" Color="#007acc"/>
+        <SolidColorBrush x:Key="GlobalAccentHover" Color="#1f9bcf"/>
+        <SolidColorBrush x:Key="GlobalTextPrimary" Color="#ffffff"/>
+        <SolidColorBrush x:Key="GlobalTextSecondary" Color="#cccccc"/>
+        <SolidColorBrush x:Key="GlobalBorderColor" Color="#404040"/>
+        <SolidColorBrush x:Key="GlobalSuccessColor" Color="#16c60c"/>
+        <SolidColorBrush x:Key="GlobalWarningColor" Color="#ff8c00"/>
+        <SolidColorBrush x:Key="GlobalErrorColor" Color="#e74c3c"/>
+
+        <!-- Global Styles -->
+        <Style TargetType="Window">
+            <Setter Property="Background" Value="{StaticResource GlobalPrimaryBackground}"/>
+            <Setter Property="Foreground" Value="{StaticResource GlobalTextPrimary}"/>
+            <Setter Property="FontFamily" Value="Segoe UI, Arial, sans-serif"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- ScrollBar Styling -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="{StaticResource GlobalSecondaryBackground}"/>
+            <Setter Property="Foreground" Value="{StaticResource GlobalBorderColor}"/>
+            <Setter Property="Width" Value="12"/>
+        </Style>
+
+        <!-- MessageBox and Dialog Styling would require additional custom implementations -->
+
+        <!-- ToolTip Styling -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="{StaticResource GlobalSecondaryBackground}"/>
+            <Setter Property="Foreground" Value="{StaticResource GlobalTextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource GlobalBorderColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Application.Resources>
 </Application>
