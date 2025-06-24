@@ -398,6 +398,19 @@ FLUSH PRIVILEGES;";
             Log("Enabling PHP-FPM for Apache...");
             ExecuteCommand(client, userPassword, "a2enmod proxy_fcgi setenvif && a2enconf php8.2-fpm && systemctl restart apache2");
 
+            Log("Downloading and configuring start scripts...");
+            ExecuteCommand(client, userPassword, "wget -O /home/chmod.sh https://havenpwi.net/install2/Installer/scripts153/chmod.sh");
+            ExecuteCommand(client, userPassword, "wget -O /home/server https://havenpwi.net/install2/Installer/scripts153/server");
+            ExecuteCommand(client, userPassword, "chmod 755 /home/chmod.sh");
+            ExecuteCommand(client, userPassword, "chmod 755 /home/server");
+
+            if (version == "1.5.1")
+            {
+                Log("Downloading maps file for version 1.5.1...");
+                ExecuteCommand(client, userPassword, "wget -O /home/maps https://havenpwi.net/install2/Installer/scriptso/maps");
+                ExecuteCommand(client, userPassword, "chmod 755 /home/maps");
+            }
+
             Log("Setting final file permissions...");
             Log("Determining web server user...");
             string webServerUser = ExecuteCommand(client, userPassword, "ps -eo user,comm --no-headers | grep -E 'apache2|httpd|nginx|www-data' | head -n1 | awk '{print $1}'").Trim();
