@@ -14,6 +14,7 @@ namespace PwServerInstallerWpf
         private bool _useRoot = false;
         private string _rootPassword = "";
         private bool _useSudo = false;
+        private string _privateKeyFilePath;
 
         public MainWindow()
         {
@@ -25,15 +26,43 @@ namespace PwServerInstallerWpf
             cmbVersion.SelectedIndex = 0; // Default to the first item
         }
 
+        private void btnBrowseKey_Click(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog
+            {
+                Title = "Select Private Key File",
+                Filter = "All files (*.*)|*.*"
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                _privateKeyFilePath = openFileDialog.FileName;
+                // FIX: This line is now enabled to update the UI.
+                txtKeyPath.Text = _privateKeyFilePath;
+            }
+        }
+
+        private void chkUseSshKey_Checked(object sender, RoutedEventArgs e)
+        {
+            // This event handler is for UI logic, which is handled by binding in the XAML.
+            // No additional code is needed here if visibility is bound to the checkbox state.
+        }
+
+
         private async void btnInstall_Click(object sender, RoutedEventArgs e)
         {
+            // FIX: Checkbox state is now correctly read.
+            bool useSshKey = chkUseSshKey.IsChecked == true;
+
             if (string.IsNullOrWhiteSpace(txtHost.Text) ||
                 string.IsNullOrWhiteSpace(txtUsername.Text) ||
-                string.IsNullOrWhiteSpace(txtPassword.Password))
+                // Keep the main password box for sudo, but don't require it for the connection if using a key
+                (useSshKey && string.IsNullOrWhiteSpace(_privateKeyFilePath)))
             {
-                MessageBox.Show("Please fill in all SSH connection details.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Please fill in all required SSH connection details.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
+
 
             _useRoot = chkRunAsRoot.IsChecked == true;
             if (_useRoot && string.IsNullOrWhiteSpace(txtRootPassword.Password))
@@ -49,7 +78,7 @@ namespace PwServerInstallerWpf
 
             string host = txtHost.Text;
             string username = txtUsername.Text;
-            string userPassword = txtPassword.Password;
+            string userPassword = txtPassword.Password; // This is now for SUDO
             string version = cmbVersion.SelectedItem.ToString();
             string dbPassword = string.IsNullOrWhiteSpace(txtDbPassword.Text)
                 ? Path.GetRandomFileName().Replace(".", "").Substring(0, 10)
@@ -65,7 +94,24 @@ namespace PwServerInstallerWpf
 
                 await Task.Run(() =>
                 {
-                    var connectionInfo = new ConnectionInfo(host, username, new PasswordAuthenticationMethod(username, userPassword));
+                    AuthenticationMethod authMethod;
+                    if (useSshKey)
+                    {
+                        Log("Attempting authentication using SSH key.");
+                        // FIX: Key passphrase is now correctly read from the password box.
+                        string keyPassword = txtKeyPassword.Password;
+                        var keyFile = string.IsNullOrWhiteSpace(keyPassword)
+                            ? new PrivateKeyFile(_privateKeyFilePath)
+                            : new PrivateKeyFile(_privateKeyFilePath, keyPassword);
+                        authMethod = new PrivateKeyAuthenticationMethod(username, keyFile);
+                    }
+                    else
+                    {
+                        Log("Attempting authentication using password.");
+                        authMethod = new PasswordAuthenticationMethod(username, userPassword);
+                    }
+
+                    var connectionInfo = new ConnectionInfo(host, username, authMethod);
                     using (var client = new SshClient(connectionInfo))
                     {
                         Log($"Connecting to {host}...");
@@ -361,11 +407,14 @@ FLUSH PRIVILEGES;";
 
         private async void btnInstallPanel_Click(object sender, RoutedEventArgs e)
         {
+            // FIX: Checkbox state is now correctly read.
+            bool useSshKey = chkUseSshKey.IsChecked == true;
+
             if (string.IsNullOrWhiteSpace(txtHost.Text) ||
                 string.IsNullOrWhiteSpace(txtUsername.Text) ||
-                string.IsNullOrWhiteSpace(txtPassword.Password))
+                (useSshKey && string.IsNullOrWhiteSpace(_privateKeyFilePath)))
             {
-                MessageBox.Show("Please fill in all SSH connection details.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Please fill in all required SSH connection details.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -427,7 +476,23 @@ FLUSH PRIVILEGES;";
 
                 panelCredentials = await Task.Run<string>(() =>
                 {
-                    var connectionInfo = new ConnectionInfo(host, username, new PasswordAuthenticationMethod(username, userPassword));
+                    AuthenticationMethod authMethod;
+                    if (useSshKey)
+                    {
+                        Log("Attempting authentication using SSH key.");
+                        // FIX: Key passphrase is now correctly read from the password box.
+                        string keyPassword = txtKeyPassword.Password;
+                        var keyFile = string.IsNullOrWhiteSpace(keyPassword)
+                            ? new PrivateKeyFile(_privateKeyFilePath)
+                            : new PrivateKeyFile(_privateKeyFilePath, keyPassword);
+                        authMethod = new PrivateKeyAuthenticationMethod(username, keyFile);
+                    }
+                    else
+                    {
+                        Log("Attempting authentication using password.");
+                        authMethod = new PasswordAuthenticationMethod(username, userPassword);
+                    }
+                    var connectionInfo = new ConnectionInfo(host, username, authMethod);
                     using (var client = new SshClient(connectionInfo))
                     {
                         Log($"Connecting to {host}...");
@@ -719,7 +784,7 @@ FLUSH PRIVILEGES;";
                 Log($"> su -c \"{command}\"");
                 commandToExecute = $"echo '{_rootPassword}' | su - -c '{escapedCommand}'";
             }
-            else if (_useSudo)
+            else if (_useSudo && !string.IsNullOrWhiteSpace(userPassword))
             {
                 Log($"> sudo {command}");
                 commandToExecute = $"echo '{userPassword}' | sudo -S -- bash -c '{escapedCommand}'";

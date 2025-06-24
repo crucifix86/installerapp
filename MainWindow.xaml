@@ -242,50 +242,65 @@
                     Margin="0,0,0,15">
                 <StackPanel>
                     <TextBlock Text="Perfect World Server Installer" 
-                             FontSize="16" 
-                             FontWeight="Bold" 
-                             Foreground="White" 
-                             HorizontalAlignment="Center"/>
+                               FontSize="16" 
+                               FontWeight="Bold" 
+                               Foreground="White" 
+                               HorizontalAlignment="Center"/>
                     <TextBlock Text="Automated installation tool" 
-                             FontSize="11" 
-                             Foreground="White" 
-                             HorizontalAlignment="Center" 
-                             Opacity="0.9" 
-                             Margin="0,2,0,0"/>
+                               FontSize="11" 
+                               Foreground="White" 
+                               HorizontalAlignment="Center" 
+                               Opacity="0.9" 
+                               Margin="0,2,0,0"/>
                 </StackPanel>
             </Border>
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
                     <GroupBox Header="Server Connection" Style="{StaticResource ModernGroupBox}">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+                        <StackPanel>
+                            <Label Content="Host IP Address:" Style="{StaticResource ModernLabel}"/>
+                            <TextBox x:Name="txtHost" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8"/>
 
-                            <StackPanel Grid.Row="0" Margin="0,0,0,8">
-                                <Label Content="Host IP Address:" Style="{StaticResource ModernLabel}"/>
-                                <TextBox x:Name="txtHost" Style="{StaticResource ModernTextBox}"/>
+                            <Label Content="SSH Username:" Style="{StaticResource ModernLabel}"/>
+                            <TextBox x:Name="txtUsername" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8"/>
+
+                            <Label x:Name="lblPassword">
+                                <Label.Style>
+                                    <Style TargetType="Label" BasedOn="{StaticResource ModernLabel}">
+                                        <Setter Property="Content" Value="SSH Password:"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ElementName=chkUseSshKey, Path=IsChecked}" Value="True">
+                                                <Setter Property="Content" Value="Sudo Password (for remote commands):"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Label.Style>
+                            </Label>
+                            <PasswordBox x:Name="txtPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,0,0,8"/>
+
+                            <CheckBox x:Name="chkUseSshKey" Content="Use SSH Key Authentication" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center" Margin="0,5,0,8" Click="chkUseSshKey_Checked"/>
+
+                            <StackPanel x:Name="pnlSshKey" Visibility="{Binding IsChecked, ElementName=chkUseSshKey, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Label Content="Private Key File Path:" Style="{StaticResource ModernLabel}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="txtKeyPath" Style="{StaticResource ModernTextBox}" IsReadOnly="True" Grid.Column="0"/>
+                                    <Button x:Name="btnBrowseKey" Content="Browse..." Grid.Column="1" Click="btnBrowseKey_Click" Margin="8,0,0,0" Padding="12,8" FontSize="12"/>
+                                </Grid>
+
+                                <Label Content="Key Passphrase (if any):" Style="{StaticResource ModernLabel}" Margin="0,8,0,5"/>
+                                <PasswordBox x:Name="txtKeyPassword" Style="{StaticResource ModernPasswordBox}"/>
                             </StackPanel>
 
-                            <StackPanel Grid.Row="1" Margin="0,0,0,8">
-                                <Label Content="SSH Username:" Style="{StaticResource ModernLabel}"/>
-                                <TextBox x:Name="txtUsername" Style="{StaticResource ModernTextBox}"/>
-                            </StackPanel>
-
-                            <StackPanel Grid.Row="2" Margin="0,0,0,8">
-                                <Label Content="SSH Password:" Style="{StaticResource ModernLabel}"/>
-                                <PasswordBox x:Name="txtPassword" Style="{StaticResource ModernPasswordBox}"/>
-                            </StackPanel>
-
-                            <StackPanel Grid.Row="3" Margin="0,5,0,0">
+                            <StackPanel Margin="0,15,0,0">
                                 <CheckBox x:Name="chkRunAsRoot" Content="Run as root (provide root password)" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center"/>
                                 <PasswordBox x:Name="txtRootPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,5,0,0" Visibility="{Binding IsChecked, ElementName=chkRunAsRoot, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                             </StackPanel>
-                        </Grid>
+                        </StackPanel>
                     </GroupBox>
 
                     <GroupBox Header="Server Version" Style="{StaticResource ModernGroupBox}">
