@@ -11,6 +11,10 @@ namespace PwServerInstallerWpf
 {
     public partial class MainWindow : Window
     {
+        private bool _useRoot = false;
+        private string _rootPassword = "";
+        private bool _useSudo = false;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -31,12 +35,18 @@ namespace PwServerInstallerWpf
                 return;
             }
 
+            _useRoot = chkRunAsRoot.IsChecked == true;
+            if (_useRoot && string.IsNullOrWhiteSpace(txtRootPassword.Password))
+            {
+                MessageBox.Show("Please provide the root password when 'Run as root' is checked.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            _rootPassword = _useRoot ? txtRootPassword.Password : "";
+
+
             btnInstall.IsEnabled = false;
             txtLog.Clear();
 
-            // --- ROBUST THREADING FIX ---
-            // Read all values from UI controls into local variables on the UI thread FIRST.
-            // The background task will only use these variables, ensuring it never touches a UI element.
             string host = txtHost.Text;
             string username = txtUsername.Text;
             string userPassword = txtPassword.Password;
@@ -51,10 +61,8 @@ namespace PwServerInstallerWpf
                 Log($"Selected Version: {version}");
                 Log($"Database 'admin' password will be: {dbPassword}");
 
-                // Prompt to save DB credentials locally - This runs on the UI thread before the background task starts.
                 SaveCredentialsLocally("Database Credentials", $"Username: admin\nPassword: {dbPassword}");
 
-                // The background task now only captures the safe, local variables.
                 await Task.Run(() =>
                 {
                     var connectionInfo = new ConnectionInfo(host, username, new PasswordAuthenticationMethod(username, userPassword));
@@ -64,7 +72,6 @@ namespace PwServerInstallerWpf
                         client.Connect();
                         Log("SSH Connection Successful.");
 
-                        // Execute the installation sequence.
                         RunFullInstallation(client, userPassword, version, dbPassword);
 
                         client.Disconnect();
@@ -89,131 +96,112 @@ namespace PwServerInstallerWpf
 
         #region --- Core Logic and Installation Steps ---
 
-        /// <summary>
-        /// Main orchestrator for the installation process.
-        /// </summary>
         private void RunFullInstallation(SshClient client, string userPassword, string version, string dbPassword)
         {
-            // --- Sudo Detection Logic ---
-            bool useSudo = true;
-            Log("Checking for sudo availability...");
-            try
+            if (_useRoot)
             {
-                var testCmd = client.CreateCommand("sudo -v");
-                testCmd.Execute();
-                var error = testCmd.Error;
-                if (!string.IsNullOrEmpty(error) && error.Contains("sudo: command not found"))
+                Log("'Run as root' selected. Bypassing sudo check and using su.");
+                _useSudo = false;
+            }
+            else
+            {
+                Log("Checking for sudo availability...");
+                try
                 {
-                    useSudo = false;
-                    Log("Sudo command not found. Assuming root session. Commands will be run directly.");
+                    var testCmd = client.CreateCommand("sudo -v");
+                    testCmd.Execute();
+                    var error = testCmd.Error;
+                    if (!string.IsNullOrEmpty(error) && error.Contains("sudo: command not found"))
+                    {
+                        _useSudo = false;
+                        Log("Sudo command not found. Assuming user is root. Commands will be run directly.");
+                    }
+                    else
+                    {
+                        _useSudo = true;
+                        Log("Sudo is available.");
+                    }
                 }
-                else
+                catch (Exception)
                 {
-                    Log("Sudo is available.");
+                    _useSudo = false;
+                    Log("Sudo check failed (command not found or user lacks privileges). Assuming non-sudo session.");
                 }
             }
-            catch (Exception)
-            {
-                useSudo = false;
-                Log("Sudo command not found. Assuming root session. Commands will be run directly.");
-            }
 
+            PrepareBaseSystemAndPrereqs(client, userPassword);
+            ConfigureSoftwareRepositories(client, userPassword);
 
-            // --- Phase 1: System Preparation ---
-            DetectOSAndInstallBase(client, userPassword, useSudo);
-            InstallPhpAndDependencies(client, userPassword, useSudo);
-            InstallJava(client, userPassword, useSudo);
-            InstallWebServerAndDB(client, userPassword, useSudo);
+            Log("Updating package lists with new repositories...");
+            ExecuteCommand(client, userPassword, "apt update -y");
 
-            // --- Phase 2: Download and Extract Files ---
-            DownloadAndExtractServerFiles(client, userPassword, useSudo, version);
+            InstallAllSoftware(client, userPassword);
 
-            // Version 1.5.5 has a special library installation step
+            DownloadAndExtractServerFiles(client, userPassword, version);
             if (version == "1.5.5")
             {
-                DownloadAndInstallLibraries155(client, userPassword, useSudo);
+                DownloadAndInstallLibraries155(client, userPassword);
             }
 
-            DownloadAndExtractWebFiles(client, userPassword, useSudo);
-            DownloadAndConfigurePwAdmin(client, userPassword, useSudo, dbPassword);
-
-            // --- Phase 3: Configuration ---
-            ConfigureMariaDb(client, userPassword, useSudo, dbPassword);
-            ConfigureHostsFile(client, userPassword, useSudo);
-            ConfigureApplication(client, userPassword, useSudo, version, dbPassword);
-
-            // --- Phase 4: Database Import ---
-            DownloadAndImportDatabase(client, userPassword, useSudo, version, dbPassword);
-
-            // --- Phase 5: Finalization ---
-            FinalizeSetup(client, userPassword, useSudo, version);
+            DownloadAndExtractWebFiles(client, userPassword);
+            DownloadAndConfigurePwAdmin(client, userPassword, dbPassword);
+            ConfigureMariaDb(client, userPassword, dbPassword);
+            ConfigureHostsFile(client, userPassword);
+            ConfigureApplication(client, userPassword, version, dbPassword);
+            DownloadAndImportDatabase(client, userPassword, version, dbPassword);
+            FinalizeSetup(client, userPassword, version);
         }
 
-        private void DetectOSAndInstallBase(SshClient client, string userPassword, bool useSudo)
+        private void PrepareBaseSystemAndPrereqs(SshClient client, string userPassword)
         {
             LogSection("System Preparation");
-            Log("Updating package lists...");
-            ExecuteCommand(client, userPassword, "apt update -y", useSudo);
-
-            Log("Installing common prerequisites...");
-            ExecuteCommand(client, userPassword, "apt install -y wget tar software-properties-common curl gnupg lsb-release apt-transport-https ca-certificates unzip", useSudo);
+            Log("Installing core prerequisites (curl, gnupg, etc)...");
+            ExecuteCommand(client, userPassword, "apt-get install -y --allow-unauthenticated wget tar software-properties-common curl gnupg lsb-release apt-transport-https ca-certificates unzip");
 
             Log("Adding i386 architecture...");
-            ExecuteCommand(client, userPassword, "dpkg --add-architecture i386", useSudo);
-            ExecuteCommand(client, userPassword, "apt update -y", useSudo);
-
-            Log("Installing 32-bit libraries...");
-            ExecuteCommand(client, userPassword, "apt install -y libstdc++6:i386 libxml2:i386", useSudo);
+            ExecuteCommand(client, userPassword, "dpkg --add-architecture i386");
         }
 
-        private void InstallPhpAndDependencies(SshClient client, string userPassword, bool useSudo)
+        private void ConfigureSoftwareRepositories(SshClient client, string userPassword)
         {
-            LogSection("PHP Installation");
-            var osRelease = ExecuteCommand(client, userPassword, "cat /etc/os-release", useSudo);
+            LogSection("Configuring Software Repositories");
+            var osRelease = ExecuteCommand(client, userPassword, "cat /etc/os-release");
             if (osRelease.Contains("ID=debian"))
             {
                 Log("Debian detected. Adding Sury PHP repository...");
-                ExecuteCommand(client, userPassword, "curl -sSL https://packages.sury.org/php/apt.gpg | gpg --dearmor -o /usr/share/keyrings/sury-php-archive-keyring.gpg", useSudo);
-                ExecuteCommand(client, userPassword, "echo \"deb [signed-by=/usr/share/keyrings/sury-php-archive-keyring.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main\" > /etc/apt/sources.list.d/sury-php.list", useSudo);
+                ExecuteCommand(client, userPassword, "curl -sSL https://packages.sury.org/php/apt.gpg | gpg --dearmor -o /usr/share/keyrings/sury-php-archive-keyring.gpg");
+                ExecuteCommand(client, userPassword, "echo \"deb [signed-by=/usr/share/keyrings/sury-php-archive-keyring.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main\" > /etc/apt/sources.list.d/sury-php.list");
             }
             else
             {
                 Log("Ubuntu detected. Adding Ondrej PHP PPA...");
-                ExecuteCommand(client, userPassword, "add-apt-repository ppa:ondrej/php -y", useSudo);
+                ExecuteCommand(client, userPassword, "add-apt-repository ppa:ondrej/php -y");
             }
-            ExecuteCommand(client, userPassword, "apt update -y", useSudo);
-            Log("Installing PHP 8.2 and extensions...");
-            ExecuteCommand(client, userPassword, "apt install -y php8.2 php8.2-cli php8.2-fpm php8.2-curl php8.2-mysql php8.2-gd php8.2-opcache php8.2-zip php8.2-intl php8.2-bcmath php8.2-mbstring php8.2-xml", useSudo);
         }
 
-        private void InstallJava(SshClient client, string userPassword, bool useSudo)
+        private void InstallAllSoftware(SshClient client, string userPassword)
         {
-            LogSection("Java Installation");
-            var osRelease = ExecuteCommand(client, userPassword, "cat /etc/os-release", useSudo);
+            LogSection("Installing All Software");
+            Log("Installing PHP, Java, Web Server, Database, and libraries...");
+
+            ExecuteCommand(client, userPassword, "apt install -y php8.2 php8.2-cli php8.2-fpm php8.2-curl php8.2-mysql php8.2-gd php8.2-opcache php8.2-zip php8.2-intl php8.2-bcmath php8.2-mbstring php8.2-xml libstdc++6:i386 libxml2:i386");
+
+            var osRelease = ExecuteCommand(client, userPassword, "cat /etc/os-release");
             if (osRelease.Contains("debian"))
             {
-                Log("Installing default JDK/JRE for Debian...");
-                ExecuteCommand(client, userPassword, "apt install -y default-jdk default-jre", useSudo);
+                ExecuteCommand(client, userPassword, "apt install -y default-jdk default-jre");
             }
             else
             {
-                Log("Installing OpenJDK 11 for Ubuntu...");
-                ExecuteCommand(client, userPassword, "apt-get install -y openjdk-11-jdk openjdk-11-jre", useSudo);
+                ExecuteCommand(client, userPassword, "apt-get install -y openjdk-11-jdk openjdk-11-jre");
             }
+
+            ExecuteCommand(client, userPassword, "apt install -y apache2 mariadb-server");
+            ExecuteCommand(client, userPassword, "systemctl enable apache2 && systemctl start apache2");
+            ExecuteCommand(client, userPassword, "systemctl enable mariadb && systemctl start mariadb");
         }
 
-        private void InstallWebServerAndDB(SshClient client, string userPassword, bool useSudo)
-        {
-            LogSection("Web Server and Database Installation");
-            Log("Installing Apache2 web server...");
-            ExecuteCommand(client, userPassword, "apt install -y apache2", useSudo);
-            ExecuteCommand(client, userPassword, "systemctl enable apache2 && systemctl start apache2", useSudo);
-            Log("Installing MariaDB server...");
-            ExecuteCommand(client, userPassword, "apt install -y mariadb-server", useSudo);
-            ExecuteCommand(client, userPassword, "systemctl enable mariadb && systemctl start mariadb", useSudo);
-        }
-
-        private void DownloadAndExtractServerFiles(SshClient client, string userPassword, bool useSudo, string version)
+        private void DownloadAndExtractServerFiles(SshClient client, string userPassword, string version)
         {
             LogSection("Downloading Server Files");
             string serverFileUrl = "", serverFileName = "";
@@ -224,54 +212,53 @@ namespace PwServerInstallerWpf
                 case "1.5.5": serverFileUrl = "http://havenpwi.net/install2/Installer/155/155V2.tar.gz"; serverFileName = "155V2.tar.gz"; break;
             }
             Log($"Downloading {serverFileName}...");
-            ExecuteCommand(client, userPassword, $"wget -O /{serverFileName} {serverFileUrl}", useSudo);
+            ExecuteCommand(client, userPassword, $"wget -O /{serverFileName} {serverFileUrl}");
             Log("Extracting server files...");
-            ExecuteCommand(client, userPassword, $"tar kxvzf /{serverFileName} -C /", useSudo);
+            ExecuteCommand(client, userPassword, $"tar kxvzf /{serverFileName} -C /", true);
             Log("Cleaning up downloaded archive...");
-            ExecuteCommand(client, userPassword, $"rm /{serverFileName}", useSudo);
+            ExecuteCommand(client, userPassword, $"rm /{serverFileName}");
         }
 
-        private void DownloadAndInstallLibraries155(SshClient client, string userPassword, bool useSudo)
+        private void DownloadAndInstallLibraries155(SshClient client, string userPassword)
         {
             LogSection("Installing 1.5.5 Specific Libraries");
             Log("Downloading lib.zip...");
-            ExecuteCommand(client, userPassword, "wget -O /tmp/lib.zip http://havenpwi.net/install2/Installer/155/lib.zip", useSudo);
+            ExecuteCommand(client, userPassword, "wget -O /tmp/lib.zip http://havenpwi.net/install2/Installer/155/lib.zip");
 
             Log("Extracting libraries to /usr/lib...");
-            // The -j flag is crucial here. It junks the paths and extracts files directly to the target directory.
-            ExecuteCommand(client, userPassword, "unzip -o -j /tmp/lib.zip -d /usr/lib", useSudo);
+            ExecuteCommand(client, userPassword, "unzip -o -j /tmp/lib.zip -d /usr/lib");
 
             Log("Cleaning up lib.zip...");
-            ExecuteCommand(client, userPassword, "rm /tmp/lib.zip", useSudo);
+            ExecuteCommand(client, userPassword, "rm /tmp/lib.zip");
         }
 
-        private void DownloadAndExtractWebFiles(SshClient client, string userPassword, bool useSudo)
+        private void DownloadAndExtractWebFiles(SshClient client, string userPassword)
         {
             LogSection("Downloading Web Registration Files");
-            ExecuteCommand(client, userPassword, "wget -O /tmp/reg.zip http://havenpwi.net/install2/Installer/155/PW-Registration-Script-with-Captcha-main.zip", useSudo);
+            ExecuteCommand(client, userPassword, "wget -O /tmp/reg.zip http://havenpwi.net/install2/Installer/155/PW-Registration-Script-with-Captcha-main.zip");
             Log("Extracting web files to /var/www/html...");
-            ExecuteCommand(client, userPassword, "unzip -o /tmp/reg.zip -d /var/www/html", useSudo);
+            ExecuteCommand(client, userPassword, "unzip -o /tmp/reg.zip -d /var/www/html");
             Log("Moving extracted files to web root...");
-            ExecuteCommand(client, userPassword, "mv /var/www/html/PW-Registration-Script-with-Captcha-main*/* /var/www/html/", useSudo, true);
+            ExecuteCommand(client, userPassword, "mv /var/www/html/PW-Registration-Script-with-Captcha-main*/* /var/www/html/", true);
             Log("Cleaning up...");
-            ExecuteCommand(client, userPassword, "rm -rf /var/www/html/PW-Registration-Script-with-Captcha-main*", useSudo, true);
-            ExecuteCommand(client, userPassword, "rm /tmp/reg.zip", useSudo);
+            ExecuteCommand(client, userPassword, "rm -rf /var/www/html/PW-Registration-Script-with-Captcha-main*", true);
+            ExecuteCommand(client, userPassword, "rm /tmp/reg.zip");
         }
 
-        private void DownloadAndConfigurePwAdmin(SshClient client, string userPassword, bool useSudo, string dbPassword)
+        private void DownloadAndConfigurePwAdmin(SshClient client, string userPassword, string dbPassword)
         {
             LogSection("Downloading and Configuring PWAdmin");
-            ExecuteCommand(client, userPassword, "mkdir -p /home/pwadmin", useSudo);
-            ExecuteCommand(client, userPassword, "wget -O /tmp/pwadmin.zip https://havenpwi.net/installs/pwadmin/pwadminfinalbeta.zip", useSudo);
-            ExecuteCommand(client, userPassword, "unzip -o /tmp/pwadmin.zip -d /home", useSudo);
+            ExecuteCommand(client, userPassword, "mkdir -p /home/pwadmin");
+            ExecuteCommand(client, userPassword, "wget -O /tmp/pwadmin.zip https://havenpwi.net/installs/pwadmin/pwadminfinalbeta.zip");
+            ExecuteCommand(client, userPassword, "unzip -o /tmp/pwadmin.zip -d /home");
             Log("Configuring PWAdmin...");
             string configFile = "/home/pwadmin/webapps/pwadmin/WEB-INF/.pwadminconf.jsp";
-            ExecuteCommand(client, userPassword, $"sed -i 's|String db_user.*|String db_user = \"admin\";|' {configFile}", useSudo);
-            ExecuteCommand(client, userPassword, $"sed -i 's|String db_password.*|String db_password = \"{dbPassword}\";|' {configFile}", useSudo);
-            ExecuteCommand(client, userPassword, "rm /tmp/pwadmin.zip", useSudo);
+            ExecuteCommand(client, userPassword, $"sed -i 's|String db_user.*|String db_user = \"admin\";|' {configFile}");
+            ExecuteCommand(client, userPassword, $"sed -i 's|String db_password.*|String db_password = \"{dbPassword}\";|' {configFile}");
+            ExecuteCommand(client, userPassword, "rm /tmp/pwadmin.zip");
         }
 
-        private void ConfigureMariaDb(SshClient client, string userPassword, bool useSudo, string dbPassword)
+        private void ConfigureMariaDb(SshClient client, string userPassword, string dbPassword)
         {
             LogSection("Configuring MariaDB");
             Log("Creating 'admin' user and granting privileges...");
@@ -283,85 +270,79 @@ GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;
 GRANT ALL PRIVILEGES ON *.* TO 'admin'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;";
 
-            // Replace Windows line endings (\r\n) with Linux line endings (\n)
             string linuxSqlScriptContent = sqlScriptContent.Replace("\r\n", "\n");
 
-            // Use a 'here document' with cat to reliably write the SQL to a file on the server.
-            // This avoids all shell escaping issues with echo.
             string remoteScriptPath = "/tmp/mariadb_setup.sql";
             string catCommand = $"cat << 'EOF' > {remoteScriptPath}\n{linuxSqlScriptContent}\nEOF";
-            ExecuteCommand(client, userPassword, catCommand, useSudo);
+            ExecuteCommand(client, userPassword, catCommand);
             Log($"Created MariaDB setup script at {remoteScriptPath}");
 
-            // Execute the script using mysql source command.
-            ExecuteCommand(client, userPassword, $"mysql -u root < {remoteScriptPath}", useSudo);
+            ExecuteCommand(client, userPassword, $"mysql -u root < {remoteScriptPath}");
 
-            // Clean up the script file.
-            ExecuteCommand(client, userPassword, $"rm {remoteScriptPath}", useSudo);
+            ExecuteCommand(client, userPassword, $"rm {remoteScriptPath}");
 
             Log("Allowing remote connections to MariaDB...");
             string mariadbConfig = "/etc/mysql/mariadb.conf.d/50-server.cnf";
-            ExecuteCommand(client, userPassword, $"sed -i 's/bind-address.*/bind-address = 0.0.0.0/' {mariadbConfig}", useSudo);
+            ExecuteCommand(client, userPassword, $"sed -i 's/bind-address.*/bind-address = 0.0.0.0/' {mariadbConfig}", true);
             Log("Restarting MariaDB service...");
-            ExecuteCommand(client, userPassword, "systemctl restart mariadb", useSudo);
+            ExecuteCommand(client, userPassword, "systemctl restart mariadb");
         }
 
-        private void ConfigureHostsFile(SshClient client, string userPassword, bool useSudo)
+        private void ConfigureHostsFile(SshClient client, string userPassword)
         {
             LogSection("Configuring /etc/hosts");
             string hostsEntries = @"
 127.0.0.1 manager aumanager auth audb link1 link2 game1 game2 game3 game4 delivery database backup gmserver.localdomain gmserver";
-            ExecuteCommand(client, userPassword, $"echo '{hostsEntries}' >> /etc/hosts", useSudo);
+            ExecuteCommand(client, userPassword, $"echo '{hostsEntries}' >> /etc/hosts");
         }
 
-        private void ConfigureApplication(SshClient client, string userPassword, bool useSudo, string version, string dbPassword)
+        private void ConfigureApplication(SshClient client, string userPassword, string version, string dbPassword)
         {
             LogSection("Configuring Application Files");
             string tableXmlPath = (version == "1.5.1") ? "/etc/table.xml" : "/home/authd/table.xml";
             Log($"Configuring {tableXmlPath}...");
-            // Use non-greedy regex [^"]* to avoid deleting rest of the line.
-            ExecuteCommand(client, userPassword, $"sed -i 's/username=\"[^\"]*\"/username=\"admin\"/g' {tableXmlPath}", useSudo);
-            ExecuteCommand(client, userPassword, $"sed -i 's/password=\"[^\"]*\"/password=\"{dbPassword}\"/g' {tableXmlPath}", useSudo);
+            ExecuteCommand(client, userPassword, $"sed -i 's/username=\"[^\"]*\"/username=\"admin\"/g' {tableXmlPath}");
+            ExecuteCommand(client, userPassword, $"sed -i 's/password=\"[^\"]*\"/password=\"{dbPassword}\"/g' {tableXmlPath}");
             Log("Configuring web registration script (config.php)...");
             string configPhpPath = "/var/www/html/config.php";
-            ExecuteCommand(client, userPassword, $"sed -i \"s/'user' => '[^']*'/'user' => 'admin'/g\" {configPhpPath}", useSudo, true);
-            ExecuteCommand(client, userPassword, $"sed -i \"s/'pass' => '[^']*'/'pass' => '{dbPassword}'/g\" {configPhpPath}", useSudo, true);
-            ExecuteCommand(client, userPassword, $"sed -i \"s/'name' => '[^']*'/'name' => 'pw'/g\" {configPhpPath}", useSudo, true);
+            ExecuteCommand(client, userPassword, $"sed -i \"s/'user' => '[^']*'/'user' => 'admin'/g\" {configPhpPath}", true);
+            ExecuteCommand(client, userPassword, $"sed -i \"s/'pass' => '[^']*'/'pass' => '{dbPassword}'/g\" {configPhpPath}", true);
+            ExecuteCommand(client, userPassword, $"sed -i \"s/'name' => '[^']*'/'name' => 'pw'/g\" {configPhpPath}", true);
         }
 
-        private void DownloadAndImportDatabase(SshClient client, string userPassword, bool useSudo, string version, string dbPassword)
+        private void DownloadAndImportDatabase(SshClient client, string userPassword, string version, string dbPassword)
         {
             LogSection("Importing Database");
-            ExecuteCommand(client, userPassword, $"mysql -u admin -p'{dbPassword}' -e 'CREATE DATABASE IF NOT EXISTS pw;'", useSudo);
+            ExecuteCommand(client, userPassword, $"mysql -u admin -p'{dbPassword}' -e 'CREATE DATABASE IF NOT EXISTS pw;'");
             string sqlUrl = "", sqlFile = "";
             switch (version)
             {
                 case "1.5.1":
                     Log("Skipping DB import for 1.5.1 as pw.sql must be placed manually in /home/SQL/");
-                    ExecuteCommand(client, userPassword, "mkdir -p /home/SQL", useSudo);
+                    ExecuteCommand(client, userPassword, "mkdir -p /home/SQL");
                     return;
                 case "1.5.3": sqlUrl = "http://havenpwi.net/install2/Installer/153/db.sql"; sqlFile = "db.sql"; break;
                 case "1.5.5": sqlUrl = "http://havenpwi.net/install2/Installer/155/pwa.sql"; sqlFile = "pwa.sql"; break;
             }
             Log($"Downloading database file {sqlFile}...");
-            ExecuteCommand(client, userPassword, $"wget -O /tmp/{sqlFile} {sqlUrl}", useSudo);
+            ExecuteCommand(client, userPassword, $"wget -O /tmp/{sqlFile} {sqlUrl}");
             Log("Importing database (this may take a while)...");
-            ExecuteCommand(client, userPassword, $"mysql -u admin -p'{dbPassword}' pw < /tmp/{sqlFile}", useSudo, false, 600);
-            ExecuteCommand(client, userPassword, $"rm /tmp/{sqlFile}", useSudo);
+            ExecuteCommand(client, userPassword, $"mysql -u admin -p'{dbPassword}' pw < /tmp/{sqlFile}", false, 600);
+            ExecuteCommand(client, userPassword, $"rm /tmp/{sqlFile}");
         }
 
-        private void FinalizeSetup(SshClient client, string userPassword, bool useSudo, string version)
+        private void FinalizeSetup(SshClient client, string userPassword, string version)
         {
             LogSection("Finalizing Setup");
             Log("Enabling PHP-FPM for Apache...");
-            ExecuteCommand(client, userPassword, "a2enmod proxy_fcgi setenvif && a2enconf php8.2-fpm && systemctl restart apache2", useSudo);
+            ExecuteCommand(client, userPassword, "a2enmod proxy_fcgi setenvif && a2enconf php8.2-fpm && systemctl restart apache2");
 
             Log("Setting final file permissions...");
             Log("Determining web server user...");
-            string webServerUser = ExecuteCommand(client, userPassword, "ps -eo user,comm --no-headers | grep -E 'apache2|httpd|nginx|www-data' | head -n1 | awk '{print $1}'", useSudo).Trim();
+            string webServerUser = ExecuteCommand(client, userPassword, "ps -eo user,comm --no-headers | grep -E 'apache2|httpd|nginx|www-data' | head -n1 | awk '{print $1}'").Trim();
             if (string.IsNullOrWhiteSpace(webServerUser))
             {
-                webServerUser = "www-data"; // A safe default for Debian/Ubuntu
+                webServerUser = "www-data";
                 Log($"Could not detect running web server user, falling back to default: {webServerUser}");
             }
             else
@@ -369,18 +350,15 @@ FLUSH PRIVILEGES;";
                 Log($"Detected web server user: {webServerUser}");
             }
 
-            ExecuteCommand(client, userPassword, $"chown -R {webServerUser}:{webServerUser} /var/www/html /home/pwadmin", useSudo);
-            ExecuteCommand(client, userPassword, "find /var/www/html -type d -exec chmod 755 {} \\;", useSudo);
-            ExecuteCommand(client, userPassword, "find /var/www/html -type f -exec chmod 644 {} \\;", useSudo);
-            ExecuteCommand(client, userPassword, "chmod +x /home/server /home/chmod.sh", useSudo, true);
+            ExecuteCommand(client, userPassword, $"chown -R {webServerUser}:{webServerUser} /var/www/html /home/pwadmin");
+            ExecuteCommand(client, userPassword, "find /var/www/html -type d -exec chmod 755 {} \\;");
+            ExecuteCommand(client, userPassword, "find /var/www/html -type f -exec chmod 644 {} \\;");
+            ExecuteCommand(client, userPassword, "chmod +x /home/server /home/chmod.sh", true);
         }
         #endregion
 
         #region --- PW-Panel Installation ---
 
-        /// <summary>
-        /// This is the new method to be called by a new "Install Panel" button in your UI.
-        /// </summary>
         private async void btnInstallPanel_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(txtHost.Text) ||
@@ -391,10 +369,18 @@ FLUSH PRIVILEGES;";
                 return;
             }
 
+            // --- FIX: Added logic to check for root/sudo selection for the panel install ---
+            _useRoot = chkRunAsRoot.IsChecked == true;
+            if (_useRoot && string.IsNullOrWhiteSpace(txtRootPassword.Password))
+            {
+                MessageBox.Show("Please provide the root password when 'Run as root' is checked.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            _rootPassword = _useRoot ? txtRootPassword.Password : "";
+
             btnInstallPanel.IsEnabled = false;
             txtLog.Clear();
 
-            // --- NEW: Prompt user for the credentials file ---
             OpenFileDialog openFileDialog = new OpenFileDialog
             {
                 Title = "Select Database Credentials File",
@@ -476,36 +462,45 @@ FLUSH PRIVILEGES;";
 
         private string RunPanelInstallation(SshClient client, string userPassword, string dbUser, string dbPassword)
         {
-            // --- Sudo Detection Logic ---
-            bool useSudo = true;
-            try
+            if (_useRoot)
             {
-                var testCmd = client.CreateCommand("sudo -v");
-                testCmd.Execute();
-                var error = testCmd.Error;
-                if (!string.IsNullOrEmpty(error) && error.Contains("sudo: command not found"))
+                Log("'Run as root' selected. Bypassing sudo check and using su.");
+                _useSudo = false;
+            }
+            else
+            {
+                Log("Checking for sudo availability for Panel installation...");
+                try
                 {
-                    useSudo = false;
+                    var testCmd = client.CreateCommand("sudo -v");
+                    testCmd.Execute();
+                    var error = testCmd.Error;
+                    if (!string.IsNullOrEmpty(error) && error.Contains("sudo: command not found"))
+                    {
+                        _useSudo = false;
+                    }
+                    else
+                    {
+                        _useSudo = true;
+                    }
                 }
-            }
-            catch (Exception)
-            {
-                useSudo = false;
+                catch (Exception)
+                {
+                    _useSudo = false;
+                }
+                Log(_useSudo ? "Sudo is available." : "Sudo not found or user lacks privileges. Assuming root session.");
             }
 
-            Log(useSudo ? "Sudo is available." : "Sudo command not found. Assuming root session.");
-
-            // --- OS Detection and Installation ---
-            string osRelease = ExecuteCommand(client, userPassword, "cat /etc/os-release", useSudo);
+            string osRelease = ExecuteCommand(client, userPassword, "cat /etc/os-release");
             if (osRelease.Contains("ID=fedora") || osRelease.Contains("ID_LIKE=rhel"))
             {
                 Log("Detected Fedora/RHEL-based system.");
-                return InstallPanelOnFedora(client, userPassword, useSudo, dbUser, dbPassword);
+                return InstallPanelOnFedora(client, userPassword, dbUser, dbPassword);
             }
             else if (osRelease.Contains("ID=debian") || osRelease.Contains("ID_LIKE=debian") || osRelease.Contains("ID=ubuntu"))
             {
                 Log("Detected Debian/Ubuntu-based system.");
-                return InstallPanelOnDebian(client, userPassword, useSudo, dbUser, dbPassword);
+                return InstallPanelOnDebian(client, userPassword, dbUser, dbPassword);
             }
             else
             {
@@ -513,11 +508,10 @@ FLUSH PRIVILEGES;";
             }
         }
 
-        private string InstallPanelOnDebian(SshClient client, string userPassword, bool useSudo, string dbUser, string dbPassword)
+        private string InstallPanelOnDebian(SshClient client, string userPassword, string dbUser, string dbPassword)
         {
             LogSection("Panel Installation on Debian/Ubuntu");
 
-            // --- Variables for Debian/Ubuntu ---
             string destDir = "/var/www/html";
             string finalDir = "panel";
             string panelDir = $"{destDir}/{finalDir}";
@@ -525,143 +519,96 @@ FLUSH PRIVILEGES;";
             string apacheConf = "/etc/apache2/apache2.conf";
             string apacheConfUrl = "http://havenpwi.net/installs/New%20Installer/panel/apache2.conf";
 
-            // 1. Install dependencies and download files
-            ExecuteCommand(client, userPassword, "apt-get update -y", useSudo);
-            ExecuteCommand(client, userPassword, "apt-get install -y unzip", useSudo);
-            DownloadAndExtractPanel(client, userPassword, useSudo, destDir, finalDir);
+            ExecuteCommand(client, userPassword, "apt-get update -y");
+            ExecuteCommand(client, userPassword, "apt-get install -y unzip");
+            DownloadAndExtractPanel(client, userPassword, destDir, finalDir);
+            ConfigurePanelEnvFile(client, userPassword, panelDir, dbUser, dbPassword);
+            InstallComposerOnDebian(client, userPassword);
+            SetPanelPermissions(client, userPassword, panelDir);
+            DownloadAndImportPanelDb(client, userPassword, panelDir, dbUser, dbPassword);
+            ConfigurePanelEncryption(client, userPassword, panelDir);
+            RunLaravelSetup(client, userPassword, panelDir);
+            string panelCredentials = CreatePanelAdminUser(client, userPassword, panelDir);
 
-            // 2. Configure .env
-            ConfigurePanelEnvFile(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
-
-            // 3. Install Composer
-            InstallComposerOnDebian(client, userPassword, useSudo);
-
-            // 4. Set Permissions
-            SetPanelPermissions(client, userPassword, useSudo, panelDir);
-
-            // 5. Database Setup
-            DownloadAndImportPanelDb(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
-
-            // 6. Configure Encryption
-            ConfigurePanelEncryption(client, userPassword, useSudo, panelDir);
-
-            // 7. Laravel Setup
-            RunLaravelSetup(client, userPassword, useSudo, panelDir);
-
-            // 8. Create Admin User and get credentials
-            string panelCredentials = CreatePanelAdminUser(client, userPassword, useSudo, panelDir);
-
-            // 9. Configure Apache
             Log("Modifying Apache configuration...");
-            ExecuteCommand(client, userPassword, $"wget -q -O {apacheConf} {apacheConfUrl}", useSudo);
-            ExecuteCommand(client, userPassword, $"sed -i \"s|DocumentRoot /var/www/html|DocumentRoot /var/www/html/panel/public|\" {apacheDefaultSite}", useSudo, true);
+            ExecuteCommand(client, userPassword, $"wget -q -O {apacheConf} {apacheConfUrl}");
+            ExecuteCommand(client, userPassword, $"sed -i \"s|DocumentRoot /var/www/html|DocumentRoot /var/www/html/panel/public|\" {apacheDefaultSite}", true);
             Log("Enabling mod_rewrite...");
-            ExecuteCommand(client, userPassword, "a2enmod rewrite", useSudo);
+            ExecuteCommand(client, userPassword, "a2enmod rewrite");
             Log("Restarting apache2 service...");
-            ExecuteCommand(client, userPassword, "systemctl restart apache2", useSudo);
-
-            // 10. Cleanup
-            ExecuteCommand(client, userPassword, "rm /tmp/dbo.sql", useSudo);
+            ExecuteCommand(client, userPassword, "systemctl restart apache2");
+            ExecuteCommand(client, userPassword, "rm /tmp/dbo.sql");
 
             return panelCredentials;
         }
 
-        private string InstallPanelOnFedora(SshClient client, string userPassword, bool useSudo, string dbUser, string dbPassword)
+        private string InstallPanelOnFedora(SshClient client, string userPassword, string dbUser, string dbPassword)
         {
             LogSection("Panel Installation on Fedora/RHEL");
 
-            // --- Variables for Fedora/RHEL ---
             string destDir = "/var/www/html";
             string finalDir = "panel";
             string panelDir = $"{destDir}/{finalDir}";
             string apacheConf = "/etc/httpd/conf/httpd.conf";
             string apacheConfUrl = "http://havenpwi.net/installs/New%20Installer/panel/httpd.conf";
 
-            // 1. Install dependencies and download files
-            ExecuteCommand(client, userPassword, "dnf check-update -y", useSudo);
-            ExecuteCommand(client, userPassword, "dnf install -y unzip composer", useSudo);
-            DownloadAndExtractPanel(client, userPassword, useSudo, destDir, finalDir);
+            ExecuteCommand(client, userPassword, "dnf check-update -y");
+            ExecuteCommand(client, userPassword, "dnf install -y unzip composer");
+            DownloadAndExtractPanel(client, userPassword, destDir, finalDir);
+            ConfigurePanelEnvFile(client, userPassword, panelDir, dbUser, dbPassword);
+            SetPanelPermissions(client, userPassword, panelDir);
+            DownloadAndImportPanelDb(client, userPassword, panelDir, dbUser, dbPassword);
+            ConfigurePanelEncryption(client, userPassword, panelDir);
+            RunLaravelSetup(client, userPassword, panelDir);
+            string panelCredentials = CreatePanelAdminUser(client, userPassword, panelDir);
 
-            // 2. Configure .env
-            ConfigurePanelEnvFile(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
-
-            // 3. Set Permissions
-            SetPanelPermissions(client, userPassword, useSudo, panelDir);
-
-            // 4. Database Setup
-            DownloadAndImportPanelDb(client, userPassword, useSudo, panelDir, dbUser, dbPassword);
-
-            // 5. Configure Encryption
-            ConfigurePanelEncryption(client, userPassword, useSudo, panelDir);
-
-            // 6. Laravel Setup
-            RunLaravelSetup(client, userPassword, useSudo, panelDir);
-
-            // 7. Create Admin User
-            string panelCredentials = CreatePanelAdminUser(client, userPassword, useSudo, panelDir);
-
-            // 8. Configure Apache
             Log("Modifying Apache configuration...");
-            ExecuteCommand(client, userPassword, $"wget -q -O {apacheConf} {apacheConfUrl}", useSudo);
+            ExecuteCommand(client, userPassword, $"wget -q -O {apacheConf} {apacheConfUrl}");
             Log("Restarting httpd service...");
-            ExecuteCommand(client, userPassword, "systemctl restart httpd", useSudo);
-
-            // 9. Cleanup
-            ExecuteCommand(client, userPassword, "rm /tmp/dbo.sql", useSudo);
+            ExecuteCommand(client, userPassword, "systemctl restart httpd");
+            ExecuteCommand(client, userPassword, "rm /tmp/dbo.sql");
 
             return panelCredentials;
         }
 
-        private void DownloadAndExtractPanel(SshClient client, string userPassword, bool useSudo, string destDir, string finalDir)
+        private void DownloadAndExtractPanel(SshClient client, string userPassword, string destDir, string finalDir)
         {
             LogSection("Downloading and Extracting Panel Files");
             string sourceUrl = "https://github.com/hrace009/PW-Panel/archive/refs/heads/master.zip";
             string tempZip = "/tmp/panel.zip";
             string extractedDirName = "PW-Panel-master";
 
-            Log("Downloading the ZIP file...");
-            ExecuteCommand(client, userPassword, $"wget -q '{sourceUrl}' -O {tempZip}", useSudo);
-
-            Log($"Creating directory: {destDir} if it doesn't exist...");
-            ExecuteCommand(client, userPassword, $"mkdir -p {destDir}", useSudo);
-
-            Log($"Extracting the ZIP file to {destDir}...");
-            ExecuteCommand(client, userPassword, $"unzip -q -o {tempZip} -d {destDir}", useSudo);
-
-            Log($"Renaming directory to '{finalDir}'...");
-            ExecuteCommand(client, userPassword, $"mv {destDir}/{extractedDirName} {destDir}/{finalDir}", useSudo);
-
-            ExecuteCommand(client, userPassword, $"rm {tempZip}", useSudo);
+            ExecuteCommand(client, userPassword, $"wget -q '{sourceUrl}' -O {tempZip}");
+            ExecuteCommand(client, userPassword, $"mkdir -p {destDir}");
+            ExecuteCommand(client, userPassword, $"unzip -q -o {tempZip} -d {destDir}");
+            ExecuteCommand(client, userPassword, $"mv {destDir}/{extractedDirName} {destDir}/{finalDir}");
+            ExecuteCommand(client, userPassword, $"rm {tempZip}");
         }
 
-        private void ConfigurePanelEnvFile(SshClient client, string userPassword, bool useSudo, string panelDir, string dbUser, string dbPass)
+        private void ConfigurePanelEnvFile(SshClient client, string userPassword, string panelDir, string dbUser, string dbPass)
         {
             LogSection("Configuring .env file");
             string envExampleFile = $"{panelDir}/.env.example";
             string envFile = $"{panelDir}/.env";
 
-            Log($"Updating database settings in {envExampleFile}...");
-            ExecuteCommand(client, userPassword, $"sed -i 's/DB_DATABASE=laravel/DB_DATABASE=pw/' {envExampleFile}", useSudo);
-            ExecuteCommand(client, userPassword, $"sed -i 's/DB_USERNAME=root/DB_USERNAME={dbUser}/' {envExampleFile}", useSudo);
-            ExecuteCommand(client, userPassword, $"sed -i 's/DB_PASSWORD=/DB_PASSWORD={dbPass}/' {envExampleFile}", useSudo);
-
-            Log($"Renaming {envExampleFile} to {envFile}");
-            ExecuteCommand(client, userPassword, $"mv {envExampleFile} {envFile}", useSudo);
+            ExecuteCommand(client, userPassword, $"sed -i 's/DB_DATABASE=laravel/DB_DATABASE=pw/' {envExampleFile}");
+            ExecuteCommand(client, userPassword, $"sed -i 's/DB_USERNAME=root/DB_USERNAME={dbUser}/' {envExampleFile}");
+            ExecuteCommand(client, userPassword, $"sed -i 's/DB_PASSWORD=/DB_PASSWORD={dbPass}/' {envExampleFile}");
+            ExecuteCommand(client, userPassword, $"mv {envExampleFile} {envFile}");
         }
 
-        private void ConfigurePanelEncryption(SshClient client, string userPassword, bool useSudo, string panelDir)
+        private void ConfigurePanelEncryption(SshClient client, string userPassword, string panelDir)
         {
             LogSection("Configuring Panel Encryption");
             string configFile = $"{panelDir}/config/pw-config.php";
-            Log($"Checking if {configFile} exists...");
             string checkFileCmd = $"test -f {configFile} && echo 'exists'";
-            string fileExists = ExecuteCommand(client, userPassword, checkFileCmd, useSudo, true);
+            string fileExists = ExecuteCommand(client, userPassword, checkFileCmd, true);
 
             if (fileExists.Trim() == "exists")
             {
                 Log($"Updating encryption type in {configFile}...");
                 string command = $"sed -i \"s/'encryption_type' => 'md5'/'encryption_type' => 'base64'/\" {configFile}";
-                ExecuteCommand(client, userPassword, command, useSudo);
+                ExecuteCommand(client, userPassword, command);
             }
             else
             {
@@ -669,18 +616,17 @@ FLUSH PRIVILEGES;";
             }
         }
 
-        private void InstallComposerOnDebian(SshClient client, string userPassword, bool useSudo)
+        private void InstallComposerOnDebian(SshClient client, string userPassword)
         {
             LogSection("Installing Composer on Debian");
-            Log("Checking for existing composer installations...");
-            string composerCheck = ExecuteCommand(client, userPassword, "command -v composer", useSudo, true);
+            string composerCheck = ExecuteCommand(client, userPassword, "command -v composer", true);
             if (!string.IsNullOrWhiteSpace(composerCheck))
             {
-                string composerVersion = ExecuteCommand(client, userPassword, "composer --version", useSudo, true);
+                string composerVersion = ExecuteCommand(client, userPassword, "composer --version", true);
                 if (composerVersion.Contains("Composer version 1."))
                 {
                     Log("Composer 1 found, uninstalling...");
-                    ExecuteCommand(client, userPassword, "apt-get remove --purge composer -y", useSudo);
+                    ExecuteCommand(client, userPassword, "apt-get remove --purge composer -y");
                 }
                 else
                 {
@@ -689,73 +635,52 @@ FLUSH PRIVILEGES;";
                 }
             }
 
-            Log("Downloading Composer installer...");
             string installerUrl = "https://getcomposer.org/installer";
             string installerFile = "/tmp/composer-installer.php";
-            ExecuteCommand(client, userPassword, $"wget -q '{installerUrl}' -O {installerFile}", useSudo);
-
-            Log("Running Composer installer...");
-            ExecuteCommand(client, userPassword, $"php {installerFile} --install-dir=/usr/local/bin --filename=composer", useSudo);
-
-            ExecuteCommand(client, userPassword, $"rm {installerFile}", useSudo);
+            ExecuteCommand(client, userPassword, $"wget -q '{installerUrl}' -O {installerFile}");
+            ExecuteCommand(client, userPassword, $"php {installerFile} --install-dir=/usr/local/bin --filename=composer");
+            ExecuteCommand(client, userPassword, $"rm {installerFile}");
         }
 
-        private void SetPanelPermissions(SshClient client, string userPassword, bool useSudo, string panelDir)
+        private void SetPanelPermissions(SshClient client, string userPassword, string panelDir)
         {
             LogSection("Setting Panel Permissions");
-            Log("Setting permissions for Laravel directories...");
-            ExecuteCommand(client, userPassword, $"cd {panelDir} && chmod -R 777 storage bootstrap app config", useSudo);
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && chmod -R 777 storage bootstrap app config");
         }
 
-        private void DownloadAndImportPanelDb(SshClient client, string userPassword, bool useSudo, string panelDir, string dbUser, string dbPass)
+        private void DownloadAndImportPanelDb(SshClient client, string userPassword, string panelDir, string dbUser, string dbPass)
         {
             LogSection("Downloading and Importing Panel Database");
             string sqlFileUrl = "http://havenpwi.net/installs/New%20Installer/panel/dbo.sql";
             string sqlFileLocal = "/tmp/dbo.sql";
 
-            Log("Downloading the SQL file...");
-            ExecuteCommand(client, userPassword, $"wget -q '{sqlFileUrl}' -O {sqlFileLocal}", useSudo);
-
-            Log("Importing the SQL file...");
-            ExecuteCommand(client, userPassword, $"mysql -u'{dbUser}' -p'{dbPass}' pw < {sqlFileLocal}", useSudo);
+            ExecuteCommand(client, userPassword, $"wget -q '{sqlFileUrl}' -O {sqlFileLocal}");
+            ExecuteCommand(client, userPassword, $"mysql -u'{dbUser}' -p'{dbPass}' pw < {sqlFileLocal}");
         }
 
-        private void RunLaravelSetup(SshClient client, string userPassword, bool useSudo, string panelDir)
+        private void RunLaravelSetup(SshClient client, string userPassword, string panelDir)
         {
             LogSection("Running Laravel Setup");
-            string phpPath = "php"; // Assuming php is in the PATH
-            string composerPath = "composer"; // Assuming composer is in the PATH
+            string phpPath = "php";
+            string composerPath = "composer";
 
-            Log("Running composer install...");
-            // Using 'yes' to auto-confirm any prompts.
-            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {composerPath} install --optimize-autoloader --no-dev", useSudo, false, 600);
-
-            Log("Caching configuration...");
-            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan config:cache", useSudo);
-
-            Log("Running composer install again..."); // As per script
-            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {composerPath} install", useSudo, false, 600);
-
-            Log("Running database migrations...");
-            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan migrate", useSudo);
-
-            Log("Seeding the database...");
-            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan db:seed --class=ServiceSeeder", useSudo);
-
-            Log("Generating application key...");
-            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan key:generate", useSudo);
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {composerPath} install --optimize-autoloader --no-dev", false, 600);
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan config:cache");
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {composerPath} install", false, 600);
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan migrate");
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan db:seed --class=ServiceSeeder");
+            ExecuteCommand(client, userPassword, $"cd {panelDir} && yes | {phpPath} artisan key:generate");
         }
 
-        private string CreatePanelAdminUser(SshClient client, string userPassword, bool useSudo, string panelDir)
+        private string CreatePanelAdminUser(SshClient client, string userPassword, string panelDir)
         {
             LogSection("Creating Panel Admin User");
             string adminUsername = "admin";
             string adminEmail = "randomperson@gmail.com";
             string adminFullname = "randomdev";
 
-            Log("Creating admin user...");
             string command = $"cd {panelDir} && echo -e '{adminUsername}\\n{adminEmail}\\n{adminFullname}\\n' | php artisan pw:createAdmin";
-            string adminOutput = ExecuteCommand(client, userPassword, command, useSudo);
+            string adminOutput = ExecuteCommand(client, userPassword, command);
 
             var match = Regex.Match(adminOutput, @"Password: (.*)");
             if (!match.Success)
@@ -765,13 +690,10 @@ FLUSH PRIVILEGES;";
             string adminPassword = match.Groups[1].Value.Trim();
 
             Log($"Admin user created: Username={adminUsername}, Password={adminPassword}");
-
             string credentialsContent = $"Username: {adminUsername}\nEmail: {adminEmail}\nFull Name: {adminFullname}\nPassword: {adminPassword}\n";
             Log("Panel credentials generated. Will prompt to save locally after installation.");
-
             return credentialsContent;
         }
-
 
         #endregion
 
@@ -787,15 +709,20 @@ FLUSH PRIVILEGES;";
             });
         }
 
-        private string ExecuteCommand(SshClient client, string password, string command, bool useSudo, bool ignoreErrors = false, int timeoutSeconds = 300)
+        private string ExecuteCommand(SshClient client, string userPassword, string command, bool ignoreErrors = false, int timeoutSeconds = 300)
         {
             string commandToExecute;
-            if (useSudo)
+            string escapedCommand = command.Replace("'", "'\\''");
+
+            if (_useRoot)
+            {
+                Log($"> su -c \"{command}\"");
+                commandToExecute = $"echo '{_rootPassword}' | su - -c '{escapedCommand}'";
+            }
+            else if (_useSudo)
             {
                 Log($"> sudo {command}");
-                // Escape single quotes in the command for bash -c
-                string escapedCommand = command.Replace("'", "'\\''");
-                commandToExecute = $"echo '{password}' | sudo -S -- bash -c '{escapedCommand}'";
+                commandToExecute = $"echo '{userPassword}' | sudo -S -- bash -c '{escapedCommand}'";
             }
             else
             {
@@ -814,7 +741,6 @@ FLUSH PRIVILEGES;";
 
         private void SaveCredentialsLocally(string title, string content)
         {
-            // This method MUST be called from the UI thread.
             SaveFileDialog saveFileDialog = new SaveFileDialog
             {
                 Title = $"Save {title}",
