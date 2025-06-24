@@ -363,18 +363,33 @@ FLUSH PRIVILEGES;";
             string sqlUrl = "", sqlFile = "";
             switch (version)
             {
-                case "1.5.1":
-                    Log("Skipping DB import for 1.5.1 as pw.sql must be placed manually in /home/SQL/");
-                    ExecuteCommand(client, userPassword, "mkdir -p /home/SQL");
-                    return;
-                case "1.5.3": sqlUrl = "http://havenpwi.net/install2/Installer/153/db.sql"; sqlFile = "db.sql"; break;
-                case "1.5.5": sqlUrl = "http://havenpwi.net/install2/Installer/155/pwa.sql"; sqlFile = "pwa.sql"; break;
+                case "1.5.3":
+                    sqlUrl = "http://havenpwi.net/install2/Installer/153/db.sql";
+                    sqlFile = "db.sql";
+                    break;
+                case "1.5.1": // Fallthrough to use 1.5.5's database
+                case "1.5.5":
+                    sqlUrl = "http://havenpwi.net/install2/Installer/155/pwa.sql";
+                    sqlFile = "pwa.sql";
+                    break;
             }
-            Log($"Downloading database file {sqlFile}...");
-            ExecuteCommand(client, userPassword, $"wget -O /tmp/{sqlFile} {sqlUrl}");
+            string localSqlPath = $"/tmp/{sqlFile}";
+            Log($"Downloading database file {sqlFile} for version {version}...");
+            ExecuteCommand(client, userPassword, $"wget -O {localSqlPath} {sqlUrl}");
+
+            // Check file type
+            var fileType = ExecuteCommand(client, userPassword, $"file {localSqlPath}");
+            Log($"Downloaded file type: {fileType}");
+            if (fileType.Contains("HTML document"))
+            {
+                Log("ERROR: Downloaded file is an HTML document, not a SQL file. The download URL may be broken.");
+                ExecuteCommand(client, userPassword, $"rm {localSqlPath}");
+                throw new Exception("Failed to download the database file. Received an HTML page instead of SQL.");
+            }
+
             Log("Importing database (this may take a while)...");
-            ExecuteCommand(client, userPassword, $"mysql -u admin -p'{dbPassword}' pw < /tmp/{sqlFile}", false, 600);
-            ExecuteCommand(client, userPassword, $"rm /tmp/{sqlFile}");
+            ExecuteCommand(client, userPassword, $"mysql -u admin -p'{dbPassword}' pw -e \"source {localSqlPath}\"", false, 600);
+            ExecuteCommand(client, userPassword, $"rm {localSqlPath}");
         }
 
         private void FinalizeSetup(SshClient client, string userPassword, string version)
@@ -399,7 +414,8 @@ FLUSH PRIVILEGES;";
             ExecuteCommand(client, userPassword, $"chown -R {webServerUser}:{webServerUser} /var/www/html /home/pwadmin");
             ExecuteCommand(client, userPassword, "find /var/www/html -type d -exec chmod 755 {} \\;");
             ExecuteCommand(client, userPassword, "find /var/www/html -type f -exec chmod 644 {} \\;");
-            ExecuteCommand(client, userPassword, "chmod +x /home/server /home/chmod.sh", true);
+            Log("Applying recursive 755 permissions to /home folder...");
+            ExecuteCommand(client, userPassword, "chmod -R 755 /home", true);
         }
         #endregion
 
