@@ -651,7 +651,7 @@
                                 </ListView.ContextMenu>
                             </ListView>
                             <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,5,0,0">
-                                <Button x:Name="btnNewTable" Content="New Table" IsEnabled="False" Style="{StaticResource ToolBarButton}" Padding="8,5"/>
+                                <Button x:Name="btnNewTable" Content="New Table" IsEnabled="False" Style="{StaticResource ToolBarButton}" Padding="8,5" Click="btnNewTable_Click"/>
                                 <Button x:Name="btnRefreshTables" Content="Refresh" IsEnabled="False" Margin="5,0,0,0" Style="{StaticResource ToolBarButton}" Padding="8,5" Click="btnRefreshTables_Click"/>
                             </StackPanel>
                         </Grid>
@@ -674,8 +674,8 @@
                             </StackPanel>
                         </GroupBox>
                     </Grid>
-
                 </Grid>
+
             </Grid>
         </TabItem>
     </TabControl>

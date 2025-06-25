@@ -16,6 +16,7 @@ using System.Data;
 using System.Data.Common;
 using System.Data.SqlClient;
 using MySql.Data.MySqlClient;
+using System.Windows.Data;
 
 namespace PwServerInstallerWpf
 {
@@ -719,6 +720,33 @@ namespace PwServerInstallerWpf
                     ExecuteQuery(query);
                     RefreshTableList(); // Refresh the list after dropping the table
                 }
+            }
+        }
+
+        private void btnNewTable_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new CreateTableDialog();
+            if (dialog.ShowDialog() == true)
+            {
+                string tableName = dialog.TableName;
+                var columns = dialog.Columns.Where(c => !string.IsNullOrWhiteSpace(c.Name) && !string.IsNullOrWhiteSpace(c.DataType)).ToList();
+                if (string.IsNullOrWhiteSpace(tableName) || !columns.Any())
+                {
+                    MessageBox.Show("Table name and at least one valid column (with name and data type) are required.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                var columnDefinitions = columns.Select(c => $"`{c.Name}` {c.DataType}" + (c.IsPrimaryKey ? " PRIMARY KEY" : ""));
+                string query = $"CREATE TABLE `{tableName}` ({string.Join(", ", columnDefinitions)})";
+
+                if (_sqlConnection is SqlConnection)
+                {
+                    columnDefinitions = columns.Select(c => $"[{c.Name}] {c.DataType}" + (c.IsPrimaryKey ? " PRIMARY KEY" : ""));
+                    query = $"CREATE TABLE [{tableName}] ({string.Join(", ", columnDefinitions)})";
+                }
+
+                ExecuteQuery(query);
+                RefreshTableList();
             }
         }
 
@@ -1660,6 +1688,78 @@ FLUSH PRIVILEGES;";
 
             _octalTextBlock.Text = $"Octal Value: {Convert.ToString(Permissions, 8).PadLeft(3, '0')}";
         }
+    }
+
+    public class CreateTableDialog : Window
+    {
+        public string TableName { get; private set; }
+        public List<ColumnInfo> Columns { get; private set; }
+
+        private readonly TextBox _tableNameTextBox;
+        private readonly DataGrid _columnsGrid;
+        private readonly List<string> _dataTypes = new List<string>
+        {
+            "INT", "VARCHAR(255)", "TEXT", "DATE", "DATETIME", "TIMESTAMP", "DECIMAL(10, 2)", "FLOAT", "BOOL", "BLOB"
+        };
+
+        public CreateTableDialog()
+        {
+            Title = "Create New Table";
+            Width = 450;
+            Height = 350;
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+            var panel = new StackPanel { Margin = new Thickness(10) };
+
+            panel.Children.Add(new TextBlock { Text = "Table Name:" });
+            _tableNameTextBox = new TextBox { Margin = new Thickness(0, 0, 0, 10) };
+            panel.Children.Add(_tableNameTextBox);
+
+            _columnsGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = true,
+                ItemsSource = new List<ColumnInfo> { new ColumnInfo { DataType = _dataTypes.First() } }
+            };
+
+            var nameCol = new DataGridTextColumn { Header = "Column Name", Binding = new Binding("Name"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) };
+            var typeCol = new DataGridComboBoxColumn
+            {
+                Header = "Data Type",
+                ItemsSource = _dataTypes,
+                SelectedValueBinding = new Binding("DataType"),
+                Width = new DataGridLength(1, DataGridLengthUnitType.Star)
+            };
+            var pkCol = new DataGridCheckBoxColumn { Header = "Primary Key", Binding = new Binding("IsPrimaryKey") };
+
+            _columnsGrid.Columns.Add(nameCol);
+            _columnsGrid.Columns.Add(typeCol);
+            _columnsGrid.Columns.Add(pkCol);
+
+            panel.Children.Add(_columnsGrid);
+
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
+            var okButton = new Button { Content = "OK", IsDefault = true, Width = 75, Margin = new Thickness(5) };
+            okButton.Click += (s, e) =>
+            {
+                TableName = _tableNameTextBox.Text;
+                Columns = (List<ColumnInfo>)_columnsGrid.ItemsSource;
+                DialogResult = true;
+            };
+            var cancelButton = new Button { Content = "Cancel", IsCancel = true, Width = 75, Margin = new Thickness(5) };
+            buttonPanel.Children.Add(okButton);
+            buttonPanel.Children.Add(cancelButton);
+            panel.Children.Add(buttonPanel);
+
+            Content = panel;
+        }
+    }
+
+    public class ColumnInfo
+    {
+        public string Name { get; set; }
+        public string DataType { get; set; }
+        public bool IsPrimaryKey { get; set; }
     }
     #endregion
 }
