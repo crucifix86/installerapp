@@ -12,6 +12,10 @@ using Renci.SshNet.Sftp;
 using System.Collections.Generic;
 using System.Linq;
 using Renci.SshNet.Common;
+using System.Data;
+using System.Data.Common;
+using System.Data.SqlClient;
+using MySql.Data.MySqlClient;
 
 namespace PwServerInstallerWpf
 {
@@ -30,6 +34,9 @@ namespace PwServerInstallerWpf
         private string _remoteEditedFilePath;
         private bool _isHandlingDisconnect = false;
 
+        // --- SQL client and related variables ---
+        private IDbConnection _sqlConnection;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -37,6 +44,7 @@ namespace PwServerInstallerWpf
             cmbVersion.Items.Add("1.5.3");
             cmbVersion.Items.Add("1.5.5");
             cmbVersion.SelectedIndex = 0;
+            cmbDbType.SelectedIndex = 0;
         }
 
         #region --- SFTP Functionality ---
@@ -115,7 +123,6 @@ namespace PwServerInstallerWpf
             SetSftpButtonsState(false);
         }
 
-        // --- MODIFIED Error Handler to prevent deadlocks ---
         private void OnSftpClientError(object sender, ExceptionEventArgs e)
         {
             if (_isHandlingDisconnect || _sftpClient == null || _sftpClient.IsConnected)
@@ -124,19 +131,15 @@ namespace PwServerInstallerWpf
             }
             _isHandlingDisconnect = true;
 
-            // Use BeginInvoke for asynchronous execution on the UI thread. This prevents deadlocks.
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 try
                 {
                     Log("SFTP connection was lost. Please reconnect manually.");
-                    // Call the disconnect logic to reset the UI to the disconnected state.
                     btnSftpDisconnect_Click(this, new RoutedEventArgs());
                 }
                 finally
                 {
-                    // The flag is reset here, but the primary reset is on successful connection
-                    // to prevent race conditions if the user clicks connect immediately.
                     _isHandlingDisconnect = false;
                 }
             }));
@@ -502,6 +505,223 @@ namespace PwServerInstallerWpf
         }
 
         private void chkUseSshKey_Checked(object sender, RoutedEventArgs e) { }
+
+        #endregion
+
+        #region --- SQL Database Functionality ---
+
+        private void btnSqlConnection_Click(object sender, RoutedEventArgs e)
+        {
+            string dbType = (cmbDbType.SelectedItem as ComboBoxItem)?.Content.ToString();
+            string server = txtSqlServer.Text;
+            string port = txtSqlPort.Text;
+            string database = txtSqlDatabase.Text;
+            string userId = txtSqlUser.Text;
+            string password = txtSqlPassword.Password;
+
+            if (string.IsNullOrWhiteSpace(server) || string.IsNullOrWhiteSpace(database) || string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(dbType))
+            {
+                MessageBox.Show("Please fill in all SQL connection details, including the database type.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            string connectionString;
+
+            try
+            {
+                if (dbType == "SQL Server")
+                {
+                    string serverAndPort = server;
+                    if (!string.IsNullOrWhiteSpace(port))
+                    {
+                        serverAndPort += "," + port;
+                    }
+                    connectionString = $"Server={serverAndPort};Database={database};User Id={userId};Password={password};";
+                    _sqlConnection = new SqlConnection(connectionString);
+                }
+                else // MariaDB/MySQL
+                {
+                    connectionString = $"Server={server};Port={port};Database={database};Uid={userId};Pwd={password};";
+                    _sqlConnection = new MySqlConnection(connectionString);
+                }
+
+                _sqlConnection.Open();
+                Log("SQL Connection Successful.");
+                btnSqlConnection.IsEnabled = false;
+                btnSqlDisconnect.IsEnabled = true;
+                btnExecuteSql.IsEnabled = true;
+                btnRefreshTables.IsEnabled = true;
+                btnNewTable.IsEnabled = true;
+                RefreshTableList();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to connect to the database: {ex.Message}", "Connection Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                btnSqlConnection.IsEnabled = true;
+                btnSqlDisconnect.IsEnabled = false;
+                btnExecuteSql.IsEnabled = false;
+                btnRefreshTables.IsEnabled = false;
+                btnNewTable.IsEnabled = false;
+            }
+        }
+
+        private void btnSqlDisconnect_Click(object sender, RoutedEventArgs e)
+        {
+            if (_sqlConnection?.State == ConnectionState.Open)
+            {
+                _sqlConnection.Close();
+                _sqlConnection.Dispose();
+                _sqlConnection = null;
+            }
+            Log("SQL Disconnected.");
+            btnSqlConnection.IsEnabled = true;
+            btnSqlDisconnect.IsEnabled = false;
+            btnExecuteSql.IsEnabled = false;
+            btnRefreshTables.IsEnabled = false;
+            btnNewTable.IsEnabled = false;
+            lvTables.ItemsSource = null;
+            dgSqlResults.ItemsSource = null;
+        }
+
+        private void ExecuteQuery(string query)
+        {
+            if (_sqlConnection?.State != ConnectionState.Open)
+            {
+                MessageBox.Show("Not connected to a database.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                MessageBox.Show("SQL query cannot be empty.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            try
+            {
+                DbProviderFactory factory = (_sqlConnection is SqlConnection) ?
+                    (DbProviderFactory)SqlClientFactory.Instance : (DbProviderFactory)MySqlClientFactory.Instance;
+
+                using (var cmd = _sqlConnection.CreateCommand())
+                {
+                    cmd.CommandText = query;
+
+                    // For queries that return data (SELECT)
+                    if (query.Trim().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        using (DbDataAdapter adapter = factory.CreateDataAdapter())
+                        {
+                            adapter.SelectCommand = (DbCommand)cmd;
+                            DataTable dataTable = new DataTable();
+                            adapter.Fill(dataTable);
+                            dgSqlResults.ItemsSource = dataTable.DefaultView;
+                            Log($"Executed query: {query}");
+                        }
+                    }
+                    else // For queries that don't return data (DROP, CREATE, INSERT, etc.)
+                    {
+                        int recordsAffected = cmd.ExecuteNonQuery();
+                        Log($"Executed non-query. {recordsAffected} records affected. Query: {query}");
+                        dgSqlResults.ItemsSource = null; // Clear previous results
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error executing query: {ex.Message}", "Query Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+
+        private void btnExecuteSql_Click(object sender, RoutedEventArgs e)
+        {
+            ExecuteQuery(txtSqlQuery.Text);
+        }
+
+
+        private void RefreshTableList()
+        {
+            if (_sqlConnection?.State != ConnectionState.Open) return;
+
+            try
+            {
+                DataTable schema;
+                if (_sqlConnection is SqlConnection)
+                {
+                    schema = ((SqlConnection)_sqlConnection).GetSchema("Tables");
+                }
+                else // MySqlConnection
+                {
+                    schema = ((MySqlConnection)_sqlConnection).GetSchema("Tables");
+                }
+
+                var tables = new List<string>();
+                foreach (DataRow row in schema.Rows)
+                {
+                    // For SQL Server, table name is in column "TABLE_NAME"
+                    // For MySQL, it's also "TABLE_NAME"
+                    tables.Add(row["TABLE_NAME"].ToString());
+                }
+                lvTables.ItemsSource = tables.OrderBy(t => t);
+                Log("Table list refreshed.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to retrieve table list: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void btnRefreshTables_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshTableList();
+        }
+
+        private void lvTables_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (lvTables.SelectedItem is string tableName)
+            {
+                string query = $"SELECT * FROM `{tableName}`";
+                if (_sqlConnection is SqlConnection)
+                {
+                    query = $"SELECT * FROM [{tableName}]"; // Use brackets for SQL Server
+                }
+                txtSqlQuery.Text = query;
+                ExecuteQuery(query);
+            }
+        }
+
+        private void ViewTableDataMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (lvTables.SelectedItem is string tableName)
+            {
+                string query = $"SELECT * FROM `{tableName}`";
+                if (_sqlConnection is SqlConnection)
+                {
+                    query = $"SELECT * FROM [{tableName}]";
+                }
+                txtSqlQuery.Text = query;
+                ExecuteQuery(query);
+            }
+        }
+
+        private void DropTableMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (lvTables.SelectedItem is string tableName)
+            {
+                var result = MessageBox.Show($"Are you sure you want to permanently delete the table '{tableName}'?", "Confirm Drop Table", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result == MessageBoxResult.Yes)
+                {
+                    string query = $"DROP TABLE `{tableName}`";
+                    if (_sqlConnection is SqlConnection)
+                    {
+                        query = $"DROP TABLE [{tableName}]";
+                    }
+                    ExecuteQuery(query);
+                    RefreshTableList(); // Refresh the list after dropping the table
+                }
+            }
+        }
+
 
         #endregion
 
@@ -1422,7 +1642,6 @@ FLUSH PRIVILEGES;";
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(cancelButton);
             mainPanel.Children.Add(buttonPanel);
-
             Content = mainPanel;
 
             UpdatePermissions();
