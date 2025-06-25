@@ -5,8 +5,14 @@ using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Win32;
 using Renci.SshNet;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Diagnostics;
+using Renci.SshNet.Sftp;
+using System.Collections.Generic;
+using System.Linq;
+using Renci.SshNet.Common;
 
-// Note: Change this namespace to match your project's name
 namespace PwServerInstallerWpf
 {
     public partial class MainWindow : Window
@@ -16,53 +22,499 @@ namespace PwServerInstallerWpf
         private bool _useSudo = false;
         private string _privateKeyFilePath;
 
+        // --- SFTP client and related variables ---
+        private SftpClient _sftpClient;
+        private string _currentRemotePath = "/";
+        private FileSystemWatcher _fileWatcher;
+        private string _localTempFilePath;
+        private string _remoteEditedFilePath;
+        private bool _isHandlingDisconnect = false;
+
         public MainWindow()
         {
             InitializeComponent();
-            // Populate the version selection dropdown
             cmbVersion.Items.Add("1.5.1");
             cmbVersion.Items.Add("1.5.3");
             cmbVersion.Items.Add("1.5.5");
-            cmbVersion.SelectedIndex = 0; // Default to the first item
+            cmbVersion.SelectedIndex = 0;
+        }
+
+        #region --- SFTP Functionality ---
+
+        private async void btnSftpConnect_Click(object sender, RoutedEventArgs e)
+        {
+            bool useSshKey = chkUseSshKey.IsChecked == true;
+            if (string.IsNullOrWhiteSpace(txtHost.Text) || string.IsNullOrWhiteSpace(txtUsername.Text) ||
+                (useSshKey && string.IsNullOrWhiteSpace(_privateKeyFilePath)) || (!useSshKey && string.IsNullOrWhiteSpace(txtPassword.Password)))
+            {
+                MessageBox.Show("Please fill in all required SSH connection details on the Installer tab.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            string host = txtHost.Text;
+            string username = txtUsername.Text;
+            btnSftpConnect.IsEnabled = false;
+            btnSftpDisconnect.IsEnabled = false;
+
+            try
+            {
+                AuthenticationMethod authMethod;
+                if (useSshKey)
+                {
+                    string keyPassword = txtKeyPassword.Password;
+                    var keyFile = string.IsNullOrWhiteSpace(keyPassword)
+                        ? new PrivateKeyFile(_privateKeyFilePath)
+                        : new PrivateKeyFile(_privateKeyFilePath, keyPassword);
+                    authMethod = new PrivateKeyAuthenticationMethod(username, keyFile);
+                }
+                else
+                {
+                    authMethod = new PasswordAuthenticationMethod(username, txtPassword.Password);
+                }
+
+                var connectionInfo = new ConnectionInfo(host, username, authMethod);
+                _sftpClient = new SftpClient(connectionInfo);
+
+                _sftpClient.ErrorOccurred += OnSftpClientError;
+
+                await Task.Run(() => _sftpClient.Connect());
+
+                if (_sftpClient.IsConnected)
+                {
+                    _isHandlingDisconnect = false; // Reset flag on successful connect
+                    Log("SFTP Connection Successful.");
+                    _currentRemotePath = _sftpClient.WorkingDirectory;
+                    txtRemotePath.Text = _currentRemotePath;
+                    ListRemoteFiles();
+                    SetSftpButtonsState(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to connect via SFTP: {ex.Message}", "Connection Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                SetSftpButtonsState(false);
+            }
+        }
+
+        private void btnSftpDisconnect_Click(object sender, RoutedEventArgs e)
+        {
+            if (_sftpClient != null)
+            {
+                _sftpClient.ErrorOccurred -= OnSftpClientError;
+                if (_sftpClient.IsConnected)
+                {
+                    _sftpClient.Disconnect();
+                }
+                _sftpClient.Dispose();
+                _sftpClient = null;
+            }
+
+            lvFiles.ItemsSource = null;
+            txtRemotePath.Text = "";
+            Log("SFTP Disconnected.");
+            SetSftpButtonsState(false);
+        }
+
+        // --- MODIFIED Error Handler to prevent deadlocks ---
+        private void OnSftpClientError(object sender, ExceptionEventArgs e)
+        {
+            if (_isHandlingDisconnect || _sftpClient == null || _sftpClient.IsConnected)
+            {
+                return;
+            }
+            _isHandlingDisconnect = true;
+
+            // Use BeginInvoke for asynchronous execution on the UI thread. This prevents deadlocks.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    Log("SFTP connection was lost. Please reconnect manually.");
+                    // Call the disconnect logic to reset the UI to the disconnected state.
+                    btnSftpDisconnect_Click(this, new RoutedEventArgs());
+                }
+                finally
+                {
+                    // The flag is reset here, but the primary reset is on successful connection
+                    // to prevent race conditions if the user clicks connect immediately.
+                    _isHandlingDisconnect = false;
+                }
+            }));
+        }
+
+
+        private void SetSftpButtonsState(bool connected)
+        {
+            btnSftpConnect.IsEnabled = !connected;
+            btnSftpDisconnect.IsEnabled = connected;
+            btnSftpUpload.IsEnabled = connected;
+            btnSftpDownload.IsEnabled = connected;
+            btnSftpEdit.IsEnabled = connected;
+            btnNewFile.IsEnabled = connected;
+            btnNewFolder.IsEnabled = connected;
+        }
+
+        private void ListRemoteFiles(string path = null)
+        {
+            if (_sftpClient?.IsConnected != true) return;
+            try
+            {
+                _currentRemotePath = path ?? _currentRemotePath;
+                if (string.IsNullOrEmpty(_currentRemotePath)) _currentRemotePath = "/";
+                txtRemotePath.Text = _currentRemotePath;
+
+                var files = _sftpClient.ListDirectory(_currentRemotePath);
+                var fileList = new List<SftpFile>();
+
+                if (_currentRemotePath != "/")
+                {
+                    var parentFullName = Path.GetDirectoryName(_currentRemotePath.TrimEnd('/'))?.Replace("\\", "/") ?? "/";
+                    if (string.IsNullOrEmpty(parentFullName)) parentFullName = "/";
+                    fileList.Add(new SftpFile { Name = "..", FullName = parentFullName, IsDirectory = true, Permissions = "dr-xr-xr-x" });
+                }
+
+                fileList.AddRange(files
+                    .Where(f => f.Name != "." && f.Name != "..")
+                    .Select(f => new SftpFile
+                    {
+                        Name = f.Name,
+                        FullName = f.FullName,
+                        IsDirectory = f.IsDirectory,
+                        Length = f.Length,
+                        LastWriteTime = f.LastWriteTime,
+                        Permissions = FormatPermissions(f.Attributes)
+                    }));
+
+                lvFiles.ItemsSource = fileList.OrderByDescending(f => f.IsDirectory).ThenBy(f => f.Name);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error listing files: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private string FormatPermissions(SftpFileAttributes attributes)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append(attributes.IsDirectory ? 'd' : '-');
+            sb.Append(attributes.OwnerCanRead ? 'r' : '-');
+            sb.Append(attributes.OwnerCanWrite ? 'w' : '-');
+            sb.Append(attributes.OwnerCanExecute ? 'x' : '-');
+            sb.Append(attributes.GroupCanRead ? 'r' : '-');
+            sb.Append(attributes.GroupCanWrite ? 'w' : '-');
+            sb.Append(attributes.GroupCanExecute ? 'x' : '-');
+            sb.Append(attributes.OthersCanRead ? 'r' : '-');
+            sb.Append(attributes.OthersCanWrite ? 'w' : '-');
+            sb.Append(attributes.OthersCanExecute ? 'x' : '-');
+            return sb.ToString();
+        }
+
+        private int GetPermissionsAsInt(SftpFileAttributes attributes)
+        {
+            int mode = 0;
+            if (attributes.OwnerCanRead) mode |= 256;
+            if (attributes.OwnerCanWrite) mode |= 128;
+            if (attributes.OwnerCanExecute) mode |= 64;
+            if (attributes.GroupCanRead) mode |= 32;
+            if (attributes.GroupCanWrite) mode |= 16;
+            if (attributes.GroupCanExecute) mode |= 8;
+            if (attributes.OthersCanRead) mode |= 4;
+            if (attributes.OthersCanWrite) mode |= 2;
+            if (attributes.OthersCanExecute) mode |= 1;
+            return mode;
+        }
+
+        private void lvFiles_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (lvFiles.SelectedItem is SftpFile file && file.IsDirectory)
+            {
+                ListRemoteFiles(file.FullName);
+            }
+        }
+
+        private void btnNewFolder_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new InputDialog("Create New Folder", "Enter folder name:");
+            if (dialog.ShowDialog() == true)
+            {
+                string folderName = dialog.InputText;
+                if (string.IsNullOrWhiteSpace(folderName)) return;
+
+                string newFolderPath = Path.Combine(_currentRemotePath, folderName).Replace("\\", "/");
+                try
+                {
+                    _sftpClient.CreateDirectory(newFolderPath);
+                    Log($"Folder '{folderName}' created.");
+                    ListRemoteFiles();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to create folder: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void btnNewFile_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new InputDialog("Create New File", "Enter file name:");
+            if (dialog.ShowDialog() == true)
+            {
+                string fileName = dialog.InputText;
+                if (string.IsNullOrWhiteSpace(fileName)) return;
+
+                string newFilePath = Path.Combine(_currentRemotePath, fileName).Replace("\\", "/");
+                try
+                {
+                    using (var stream = new MemoryStream())
+                    {
+                        _sftpClient.UploadFile(stream, newFilePath);
+                    }
+                    Log($"File '{fileName}' created.");
+                    ListRemoteFiles();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to create file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void PermissionsMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.Name == "..") return;
+
+            try
+            {
+                var attributes = _sftpClient.GetAttributes(selectedFile.FullName);
+                var currentPermissions = GetPermissionsAsInt(attributes);
+                var dialog = new PermissionsDialog(currentPermissions);
+
+                if (dialog.ShowDialog() == true)
+                {
+                    var newPermissions = dialog.Permissions;
+
+                    attributes.OwnerCanRead = (newPermissions & 256) != 0;
+                    attributes.OwnerCanWrite = (newPermissions & 128) != 0;
+                    attributes.OwnerCanExecute = (newPermissions & 64) != 0;
+
+                    attributes.GroupCanRead = (newPermissions & 32) != 0;
+                    attributes.GroupCanWrite = (newPermissions & 16) != 0;
+                    attributes.GroupCanExecute = (newPermissions & 8) != 0;
+
+                    attributes.OthersCanRead = (newPermissions & 4) != 0;
+                    attributes.OthersCanWrite = (newPermissions & 2) != 0;
+                    attributes.OthersCanExecute = (newPermissions & 1) != 0;
+
+                    _sftpClient.SetAttributes(selectedFile.FullName, attributes);
+
+                    Log($"Permissions changed for '{selectedFile.Name}'.");
+                    ListRemoteFiles();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to set permissions: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void DeleteMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.Name == "..")
+            {
+                MessageBox.Show("Please select a file or directory to delete.", "Selection Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var result = MessageBox.Show($"Are you sure you want to delete '{selectedFile.Name}'?", "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    if (selectedFile.IsDirectory)
+                    {
+                        _sftpClient.DeleteDirectory(selectedFile.FullName);
+                        Log($"Deleted directory '{selectedFile.Name}'.");
+                    }
+                    else
+                    {
+                        _sftpClient.DeleteFile(selectedFile.FullName);
+                        Log($"Deleted file '{selectedFile.Name}'.");
+                    }
+                    ListRemoteFiles();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Delete failed: {ex.Message}. Note: Directories must be empty.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void btnSftpUpload_Click(object sender, RoutedEventArgs e)
+        {
+            if (_sftpClient?.IsConnected != true) return;
+            var openFileDialog = new OpenFileDialog { Title = "Select File to Upload", Filter = "All files (*.*)|*.*" };
+            if (openFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    string localPath = openFileDialog.FileName;
+                    string remotePath = Path.Combine(_currentRemotePath, Path.GetFileName(localPath)).Replace("\\", "/");
+                    using (var fileStream = new FileStream(localPath, FileMode.Open))
+                    {
+                        _sftpClient.UploadFile(fileStream, remotePath);
+                    }
+                    Log($"Uploaded '{Path.GetFileName(localPath)}' to '{_currentRemotePath}'.");
+                    ListRemoteFiles();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Upload failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void btnSftpDownload_Click(object sender, RoutedEventArgs e)
+        {
+            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.IsDirectory)
+            {
+                MessageBox.Show("Please select a file to download.", "Selection Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var saveFileDialog = new SaveFileDialog { Title = "Save File As", FileName = selectedFile.Name };
+            if (saveFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    using (var fileStream = new FileStream(saveFileDialog.FileName, FileMode.Create))
+                    {
+                        _sftpClient.DownloadFile(selectedFile.FullName, fileStream);
+                    }
+                    Log($"Downloaded '{selectedFile.Name}' to '{saveFileDialog.FileName}'.");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Download failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void btnSftpEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.IsDirectory)
+            {
+                MessageBox.Show("Please select a file to edit.", "Selection Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string notepadPlusPlusPath = FindNotepadPlusPlus();
+            if (string.IsNullOrEmpty(notepadPlusPlusPath))
+            {
+                var result = MessageBox.Show("Notepad++ not found. Would you like to download it from https://notepad-plus-plus.org/downloads/ ?", "Notepad++ Not Found", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (result == MessageBoxResult.Yes)
+                {
+                    Process.Start(new ProcessStartInfo("https://notepad-plus-plus.org/downloads/") { UseShellExecute = true });
+                }
+                return;
+            }
+
+            try
+            {
+                _localTempFilePath = Path.Combine(Path.GetTempPath(), selectedFile.Name);
+                _remoteEditedFilePath = selectedFile.FullName;
+                using (var fileStream = new FileStream(_localTempFilePath, FileMode.Create, FileAccess.Write))
+                {
+                    _sftpClient.DownloadFile(_remoteEditedFilePath, fileStream);
+                }
+
+                _fileWatcher = new FileSystemWatcher(Path.GetTempPath())
+                {
+                    Filter = Path.GetFileName(_localTempFilePath),
+                    NotifyFilter = NotifyFilters.LastWrite,
+                    EnableRaisingEvents = true
+                };
+                _fileWatcher.Changed += OnTempFileChanged;
+
+                Process.Start(notepadPlusPlusPath, $"\"{_localTempFilePath}\"");
+                Log($"Opening '{selectedFile.Name}' for editing. Save the file in Notepad++ to upload changes.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to open file for editing: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private string FindNotepadPlusPlus()
+        {
+            var possiblePaths = new List<string>
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
+            };
+
+            foreach (string path in possiblePaths.Distinct())
+            {
+                string notepadPlusPlusPath = Path.Combine(path, "Notepad++", "notepad++.exe");
+                if (File.Exists(notepadPlusPlusPath))
+                {
+                    return notepadPlusPlusPath;
+                }
+            }
+            return null;
+        }
+
+        private void OnTempFileChanged(object sender, FileSystemEventArgs e)
+        {
+            if (e.ChangeType != WatcherChangeTypes.Changed) return;
+            Dispatcher.Invoke(() =>
+            {
+                try
+                {
+                    _fileWatcher.EnableRaisingEvents = false;
+                    using (var fileStream = new FileStream(_localTempFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    {
+                        _sftpClient.UploadFile(fileStream, _remoteEditedFilePath);
+                    }
+                    Log($"File '{Path.GetFileName(_remoteEditedFilePath)}' was updated on the server.");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to upload changes for '{Path.GetFileName(_remoteEditedFilePath)}': {ex.Message}", "Upload Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                finally
+                {
+                    _fileWatcher.Changed -= OnTempFileChanged;
+                    _fileWatcher.Dispose();
+                    _fileWatcher = null;
+                    try { File.Delete(_localTempFilePath); }
+                    catch (Exception ex) { Log($"Could not delete temp file '{_localTempFilePath}': {ex.Message}"); }
+                }
+            });
         }
 
         private void btnBrowseKey_Click(object sender, RoutedEventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog
-            {
-                Title = "Select Private Key File",
-                Filter = "All files (*.*)|*.*"
-            };
-
+            OpenFileDialog openFileDialog = new OpenFileDialog { Title = "Select Private Key File", Filter = "All files (*.*)|*.*" };
             if (openFileDialog.ShowDialog() == true)
             {
                 _privateKeyFilePath = openFileDialog.FileName;
-                // FIX: This line is now enabled to update the UI.
                 txtKeyPath.Text = _privateKeyFilePath;
             }
         }
 
-        private void chkUseSshKey_Checked(object sender, RoutedEventArgs e)
-        {
-            // This event handler is for UI logic, which is handled by binding in the XAML.
-            // No additional code is needed here if visibility is bound to the checkbox state.
-        }
+        private void chkUseSshKey_Checked(object sender, RoutedEventArgs e) { }
 
+        #endregion
+
+        #region --- Core Logic and Installation Steps (RESTORED) ---
 
         private async void btnInstall_Click(object sender, RoutedEventArgs e)
         {
-            // FIX: Checkbox state is now correctly read.
             bool useSshKey = chkUseSshKey.IsChecked == true;
-
-            if (string.IsNullOrWhiteSpace(txtHost.Text) ||
-                string.IsNullOrWhiteSpace(txtUsername.Text) ||
-                // Keep the main password box for sudo, but don't require it for the connection if using a key
-                (useSshKey && string.IsNullOrWhiteSpace(_privateKeyFilePath)))
+            if (string.IsNullOrWhiteSpace(txtHost.Text) || string.IsNullOrWhiteSpace(txtUsername.Text) || (useSshKey && string.IsNullOrWhiteSpace(_privateKeyFilePath)))
             {
                 MessageBox.Show("Please fill in all required SSH connection details.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-
 
             _useRoot = chkRunAsRoot.IsChecked == true;
             if (_useRoot && string.IsNullOrWhiteSpace(txtRootPassword.Password))
@@ -72,24 +524,20 @@ namespace PwServerInstallerWpf
             }
             _rootPassword = _useRoot ? txtRootPassword.Password : "";
 
-
             btnInstall.IsEnabled = false;
             txtLog.Clear();
 
             string host = txtHost.Text;
             string username = txtUsername.Text;
-            string userPassword = txtPassword.Password; // This is now for SUDO
+            string userPassword = txtPassword.Password;
             string version = cmbVersion.SelectedItem.ToString();
-            string dbPassword = string.IsNullOrWhiteSpace(txtDbPassword.Text)
-                ? Path.GetRandomFileName().Replace(".", "").Substring(0, 10)
-                : txtDbPassword.Text;
+            string dbPassword = string.IsNullOrWhiteSpace(txtDbPassword.Text) ? Path.GetRandomFileName().Replace(".", "").Substring(0, 10) : txtDbPassword.Text;
 
             try
             {
                 Log("--- Starting Perfect World Server Installation ---");
                 Log($"Selected Version: {version}");
                 Log($"Database 'admin' password will be: {dbPassword}");
-
                 SaveCredentialsLocally("Database Credentials", $"Username: admin\nPassword: {dbPassword}");
 
                 await Task.Run(() =>
@@ -98,7 +546,6 @@ namespace PwServerInstallerWpf
                     if (useSshKey)
                     {
                         Log("Attempting authentication using SSH key.");
-                        // FIX: Key passphrase is now correctly read from the password box.
                         string keyPassword = txtKeyPassword.Password;
                         var keyFile = string.IsNullOrWhiteSpace(keyPassword)
                             ? new PrivateKeyFile(_privateKeyFilePath)
@@ -111,19 +558,15 @@ namespace PwServerInstallerWpf
                         authMethod = new PasswordAuthenticationMethod(username, userPassword);
                     }
 
-                    var connectionInfo = new ConnectionInfo(host, username, authMethod);
-                    using (var client = new SshClient(connectionInfo))
+                    using (var client = new SshClient(new ConnectionInfo(host, username, authMethod)))
                     {
                         Log($"Connecting to {host}...");
                         client.Connect();
                         Log("SSH Connection Successful.");
-
                         RunFullInstallation(client, userPassword, version, dbPassword);
-
                         client.Disconnect();
                     }
                 });
-
 
                 Log("--- Installation Process Finished Successfully! ---");
                 MessageBox.Show("Installation complete! Check logs for details.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -139,8 +582,6 @@ namespace PwServerInstallerWpf
                 btnInstall.IsEnabled = true;
             }
         }
-
-        #region --- Core Logic and Installation Steps ---
 
         private void RunFullInstallation(SshClient client, string userPassword, string version, string dbPassword)
         {
@@ -377,7 +818,6 @@ FLUSH PRIVILEGES;";
             Log($"Downloading database file {sqlFile} for version {version}...");
             ExecuteCommand(client, userPassword, $"wget -O {localSqlPath} {sqlUrl}");
 
-            // Check file type
             var fileType = ExecuteCommand(client, userPassword, $"file {localSqlPath}");
             Log($"Downloaded file type: {fileType}");
             if (fileType.Contains("HTML document"))
@@ -432,22 +872,18 @@ FLUSH PRIVILEGES;";
         }
         #endregion
 
-        #region --- PW-Panel Installation ---
+        #region --- PW-Panel Installation (RESTORED) ---
 
         private async void btnInstallPanel_Click(object sender, RoutedEventArgs e)
         {
-            // FIX: Checkbox state is now correctly read.
             bool useSshKey = chkUseSshKey.IsChecked == true;
 
-            if (string.IsNullOrWhiteSpace(txtHost.Text) ||
-                string.IsNullOrWhiteSpace(txtUsername.Text) ||
-                (useSshKey && string.IsNullOrWhiteSpace(_privateKeyFilePath)))
+            if (string.IsNullOrWhiteSpace(txtHost.Text) || string.IsNullOrWhiteSpace(txtUsername.Text) || (useSshKey && string.IsNullOrWhiteSpace(_privateKeyFilePath)))
             {
                 MessageBox.Show("Please fill in all required SSH connection details.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            // --- FIX: Added logic to check for root/sudo selection for the panel install ---
             _useRoot = chkRunAsRoot.IsChecked == true;
             if (_useRoot && string.IsNullOrWhiteSpace(txtRootPassword.Password))
             {
@@ -509,7 +945,6 @@ FLUSH PRIVILEGES;";
                     if (useSshKey)
                     {
                         Log("Attempting authentication using SSH key.");
-                        // FIX: Key passphrase is now correctly read from the password box.
                         string keyPassword = txtKeyPassword.Password;
                         var keyFile = string.IsNullOrWhiteSpace(keyPassword)
                             ? new PrivateKeyFile(_privateKeyFilePath)
@@ -791,13 +1226,14 @@ FLUSH PRIVILEGES;";
 
         #endregion
 
-        #region --- SSH and Logging Helpers ---
+        #region --- SSH and Logging Helpers (RESTORED) ---
 
         private void LogSection(string section) => Log($"\n--- {section} ---\n");
 
         private void Log(string message)
         {
-            Dispatcher.Invoke(() => {
+            Dispatcher.Invoke(() =>
+            {
                 txtLog.AppendText(message + Environment.NewLine);
                 txtLog.ScrollToEnd();
             });
@@ -824,13 +1260,20 @@ FLUSH PRIVILEGES;";
                 commandToExecute = command;
             }
 
-            var cmd = client.CreateCommand(commandToExecute);
-            cmd.CommandTimeout = TimeSpan.FromSeconds(timeoutSeconds);
-            var result = cmd.Execute();
-            var stderr = new StreamReader(cmd.ExtendedOutputStream).ReadToEnd();
-            if (!string.IsNullOrWhiteSpace(stderr)) Log($"STDERR: {stderr}");
-            if (cmd.ExitStatus != 0 && !ignoreErrors) throw new Exception($"Command failed with exit code {cmd.ExitStatus}.\nError: {stderr}\nCommand: {command}");
-            return result;
+            using (var cmd = client.CreateCommand(commandToExecute))
+            {
+                cmd.CommandTimeout = TimeSpan.FromSeconds(timeoutSeconds);
+                var result = cmd.Execute();
+                string stderr;
+                using (var reader = new StreamReader(cmd.ExtendedOutputStream))
+                {
+                    stderr = reader.ReadToEnd();
+                }
+
+                if (!string.IsNullOrWhiteSpace(stderr)) Log($"STDERR: {stderr}");
+                if (cmd.ExitStatus != 0 && !ignoreErrors) throw new Exception($"Command failed with exit code {cmd.ExitStatus}.\nError: {stderr}\nCommand: {command}");
+                return result;
+            }
         }
 
         private void SaveCredentialsLocally(string title, string content)
@@ -850,4 +1293,154 @@ FLUSH PRIVILEGES;";
         }
         #endregion
     }
+
+    #region --- Helper Classes for Dialogs and SFTP items ---
+
+    public class SftpFile
+    {
+        public string Name { get; set; }
+        public string FullName { get; set; }
+        public bool IsDirectory { get; set; }
+        public long Length { get; set; }
+        public DateTime LastWriteTime { get; set; }
+        public string Permissions { get; set; }
+        public string Size => IsDirectory ? "<DIR>" : $"{Math.Round(Length / 1024.0, 2)} KB";
+    }
+
+    public class InputDialog : Window
+    {
+        public string InputText { get; private set; }
+        private readonly TextBox _textBox;
+
+        public InputDialog(string title, string prompt)
+        {
+            Title = title;
+            Width = 300;
+            Height = 150;
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            var panel = new StackPanel { Margin = new Thickness(10) };
+            panel.Children.Add(new TextBlock { Text = prompt, Margin = new Thickness(0, 0, 0, 5) });
+            _textBox = new TextBox { Margin = new Thickness(0, 0, 0, 10) };
+            panel.Children.Add(_textBox);
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var okButton = new Button { Content = "OK", IsDefault = true, Width = 75, Margin = new Thickness(5) };
+            okButton.Click += (s, e) => { InputText = _textBox.Text; DialogResult = true; };
+            var cancelButton = new Button { Content = "Cancel", IsCancel = true, Width = 75, Margin = new Thickness(5) };
+            buttonPanel.Children.Add(okButton);
+            buttonPanel.Children.Add(cancelButton);
+            panel.Children.Add(buttonPanel);
+            Content = panel;
+        }
+    }
+
+    public class PermissionsDialog : Window
+    {
+        public int Permissions { get; private set; }
+        private readonly CheckBox _ownerRead, _ownerWrite, _ownerExecute;
+        private readonly CheckBox _groupRead, _groupWrite, _groupExecute;
+        private readonly CheckBox _otherRead, _otherWrite, _otherExecute;
+        private readonly TextBlock _octalTextBlock;
+
+        public PermissionsDialog(int initialPermissions)
+        {
+            Title = "Set Permissions";
+            Width = 350;
+            Height = 280;
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+            var mainPanel = new StackPanel { Margin = new Thickness(15) };
+            mainPanel.Children.Add(new TextBlock { Text = "Permissions", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 10) });
+
+            var grid = new Grid();
+            for (int i = 0; i < 4; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            grid.Children.Add(new TextBlock { Text = "Read", HorizontalAlignment = HorizontalAlignment.Center });
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 0); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 1);
+            grid.Children.Add(new TextBlock { Text = "Write", HorizontalAlignment = HorizontalAlignment.Center });
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 0); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 2);
+            grid.Children.Add(new TextBlock { Text = "Execute", HorizontalAlignment = HorizontalAlignment.Center });
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 0); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 3);
+
+            grid.Children.Add(new TextBlock { Text = "Owner:", VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 1);
+            _ownerRead = new CheckBox { IsChecked = (initialPermissions & 256) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _ownerRead.Click += OnPermissionChanged;
+            grid.Children.Add(_ownerRead);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 1); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 1);
+            _ownerWrite = new CheckBox { IsChecked = (initialPermissions & 128) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _ownerWrite.Click += OnPermissionChanged;
+            grid.Children.Add(_ownerWrite);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 1); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 2);
+            _ownerExecute = new CheckBox { IsChecked = (initialPermissions & 64) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _ownerExecute.Click += OnPermissionChanged;
+            grid.Children.Add(_ownerExecute);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 1); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 3);
+
+            grid.Children.Add(new TextBlock { Text = "Group:", VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 2);
+            _groupRead = new CheckBox { IsChecked = (initialPermissions & 32) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _groupRead.Click += OnPermissionChanged;
+            grid.Children.Add(_groupRead);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 2); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 1);
+            _groupWrite = new CheckBox { IsChecked = (initialPermissions & 16) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _groupWrite.Click += OnPermissionChanged;
+            grid.Children.Add(_groupWrite);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 2); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 2);
+            _groupExecute = new CheckBox { IsChecked = (initialPermissions & 8) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _groupExecute.Click += OnPermissionChanged;
+            grid.Children.Add(_groupExecute);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 2); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 3);
+
+            grid.Children.Add(new TextBlock { Text = "Other:", VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 3);
+            _otherRead = new CheckBox { IsChecked = (initialPermissions & 4) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _otherRead.Click += OnPermissionChanged;
+            grid.Children.Add(_otherRead);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 3); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 1);
+            _otherWrite = new CheckBox { IsChecked = (initialPermissions & 2) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _otherWrite.Click += OnPermissionChanged;
+            grid.Children.Add(_otherWrite);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 3); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 2);
+            _otherExecute = new CheckBox { IsChecked = (initialPermissions & 1) != 0, HorizontalAlignment = HorizontalAlignment.Center };
+            _otherExecute.Click += OnPermissionChanged;
+            grid.Children.Add(_otherExecute);
+            Grid.SetRow(grid.Children[grid.Children.Count - 1], 3); Grid.SetColumn(grid.Children[grid.Children.Count - 1], 3);
+
+            mainPanel.Children.Add(grid);
+
+            _octalTextBlock = new TextBlock { Margin = new Thickness(0, 15, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, FontWeight = FontWeights.Bold, FontSize = 14 };
+            mainPanel.Children.Add(_octalTextBlock);
+
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 15, 0, 0) };
+            var okButton = new Button { Content = "OK", IsDefault = true, Width = 75, Margin = new Thickness(5) };
+            okButton.Click += (s, e) => { DialogResult = true; };
+            var cancelButton = new Button { Content = "Cancel", IsCancel = true, Width = 75, Margin = new Thickness(5) };
+            buttonPanel.Children.Add(okButton);
+            buttonPanel.Children.Add(cancelButton);
+            mainPanel.Children.Add(buttonPanel);
+
+            Content = mainPanel;
+
+            UpdatePermissions();
+        }
+
+        private void OnPermissionChanged(object sender, RoutedEventArgs e)
+        {
+            UpdatePermissions();
+        }
+
+        private void UpdatePermissions()
+        {
+            Permissions = (_ownerRead.IsChecked == true ? 256 : 0) | (_ownerWrite.IsChecked == true ? 128 : 0) | (_ownerExecute.IsChecked == true ? 64 : 0) |
+                          (_groupRead.IsChecked == true ? 32 : 0) | (_groupWrite.IsChecked == true ? 16 : 0) | (_groupExecute.IsChecked == true ? 8 : 0) |
+                          (_otherRead.IsChecked == true ? 4 : 0) | (_otherWrite.IsChecked == true ? 2 : 0) | (_otherExecute.IsChecked == true ? 1 : 0);
+
+            _octalTextBlock.Text = $"Octal Value: {Convert.ToString(Permissions, 8).PadLeft(3, '0')}";
+        }
+    }
+    #endregion
 }

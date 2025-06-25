@@ -4,8 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Perfect World Server Installer" 
-        Height="750" Width="900" 
+        Title="Perfect World Server Installer"
+        Height="750" Width="900"
         MinHeight="650" MinWidth="750"
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized"
@@ -24,6 +24,7 @@
         <SolidColorBrush x:Key="BorderColor" Color="#404040"/>
         <SolidColorBrush x:Key="SuccessColor" Color="#16c60c"/>
         <SolidColorBrush x:Key="WarningColor" Color="#ff8c00"/>
+
         <Style x:Key="ModernButton" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource AccentColor}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
@@ -54,6 +55,13 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="ToolBarButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="2"/>
+        </Style>
+
         <Style x:Key="ModernTextBox" TargetType="TextBox">
             <Setter Property="Background" Value="{StaticResource SecondaryBackground}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
@@ -123,11 +131,6 @@
                                                 <Path Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 4 4 L 8 0 Z" Fill="{StaticResource TextSecondary}"/>
                                             </Grid>
                                         </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="BorderBrush" Value="{StaticResource AccentColor}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
                                     </ControlTemplate>
                                 </ToggleButton.Template>
                             </ToggleButton>
@@ -155,35 +158,6 @@
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="ItemContainerStyle">
-                <Setter.Value>
-                    <Style TargetType="ComboBoxItem">
-                        <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-                        <Setter Property="Padding" Value="8,6"/>
-                        <Setter Property="FontSize" Value="13"/>
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ComboBoxItem">
-                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
-                                        <ContentPresenter />
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsHighlighted" Value="True">
-                                            <Setter Property="Background" Value="{StaticResource AccentColor}"/>
-                                            <Setter Property="Foreground" Value="White"/>
-                                        </Trigger>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background" Value="{StaticResource AccentHover}"/>
-                                            <Setter Property="Foreground" Value="White"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
                 </Setter.Value>
             </Setter>
         </Style>
@@ -219,157 +193,238 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Margin" Value="0,0,0,5"/>
         </Style>
+
+        <Style x:Key="ModernTabControl" TargetType="TabControl">
+            <Setter Property="Background" Value="{StaticResource PrimaryBackground}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <Style x:Key="ModernTabItem" TargetType="TabItem">
+            <Setter Property="Background" Value="{StaticResource SecondaryBackground}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="15,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border Name="Border" BorderThickness="0,0,0,2" BorderBrush="Transparent" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource AccentColor}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#3c3c3c"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
-    <Grid Margin="15">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="420" MinWidth="380"/>
-            <ColumnDefinition Width="10"/>
-            <ColumnDefinition Width="*" MinWidth="300"/>
-        </Grid.ColumnDefinitions>
+    <TabControl Style="{StaticResource ModernTabControl}">
+        <TabItem Header="Installer" Style="{StaticResource ModernTabItem}">
+            <Grid Margin="15">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="420" MinWidth="380"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="*" MinWidth="300"/>
+                </Grid.ColumnDefinitions>
 
-        <Grid Grid.Column="0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" 
-                    Background="{StaticResource AccentColor}" 
-                    CornerRadius="8" 
-                    Padding="12" 
-                    Margin="0,0,0,15">
-                <StackPanel>
-                    <TextBlock Text="Perfect World Server Installer" 
-                               FontSize="16" 
-                               FontWeight="Bold" 
-                               Foreground="White" 
-                               HorizontalAlignment="Center"/>
-                    <TextBlock Text="Automated installation tool" 
-                               FontSize="11" 
-                               Foreground="White" 
-                               HorizontalAlignment="Center" 
-                               Opacity="0.9" 
-                               Margin="0,2,0,0"/>
-                </StackPanel>
-            </Border>
-
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel>
-                    <GroupBox Header="Server Connection" Style="{StaticResource ModernGroupBox}">
+                    <Border Grid.Row="0"
+                            Background="{StaticResource AccentColor}"
+                            CornerRadius="8"
+                            Padding="12"
+                            Margin="0,0,0,15">
                         <StackPanel>
-                            <Label Content="Host IP Address:" Style="{StaticResource ModernLabel}"/>
-                            <TextBox x:Name="txtHost" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8"/>
-
-                            <Label Content="SSH Username:" Style="{StaticResource ModernLabel}"/>
-                            <TextBox x:Name="txtUsername" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8"/>
-
-                            <Label x:Name="lblPassword">
-                                <Label.Style>
-                                    <Style TargetType="Label" BasedOn="{StaticResource ModernLabel}">
-                                        <Setter Property="Content" Value="SSH Password:"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding ElementName=chkUseSshKey, Path=IsChecked}" Value="True">
-                                                <Setter Property="Content" Value="Sudo Password (for remote commands):"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Label.Style>
-                            </Label>
-                            <PasswordBox x:Name="txtPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,0,0,8"/>
-
-                            <CheckBox x:Name="chkUseSshKey" Content="Use SSH Key Authentication" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center" Margin="0,5,0,8" Click="chkUseSshKey_Checked"/>
-
-                            <StackPanel x:Name="pnlSshKey" Visibility="{Binding IsChecked, ElementName=chkUseSshKey, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <Label Content="Private Key File Path:" Style="{StaticResource ModernLabel}"/>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox x:Name="txtKeyPath" Style="{StaticResource ModernTextBox}" IsReadOnly="True" Grid.Column="0"/>
-                                    <Button x:Name="btnBrowseKey" Content="Browse..." Grid.Column="1" Click="btnBrowseKey_Click" Margin="8,0,0,0" Padding="12,8" FontSize="12"/>
-                                </Grid>
-
-                                <Label Content="Key Passphrase (if any):" Style="{StaticResource ModernLabel}" Margin="0,8,0,5"/>
-                                <PasswordBox x:Name="txtKeyPassword" Style="{StaticResource ModernPasswordBox}"/>
-                            </StackPanel>
-
-                            <StackPanel Margin="0,15,0,0">
-                                <CheckBox x:Name="chkRunAsRoot" Content="Run as root (provide root password)" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center"/>
-                                <PasswordBox x:Name="txtRootPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,5,0,0" Visibility="{Binding IsChecked, ElementName=chkRunAsRoot, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                            </StackPanel>
+                            <TextBlock Text="Perfect World Server Installer"
+                                       FontSize="16"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Automated installation tool"
+                                       FontSize="11"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       Opacity="0.9"
+                                       Margin="0,2,0,0"/>
                         </StackPanel>
-                    </GroupBox>
+                    </Border>
 
-                    <GroupBox Header="Server Version" Style="{StaticResource ModernGroupBox}">
-                        <ComboBox x:Name="cmbVersion" Style="{StaticResource ModernComboBox}"/>
-                    </GroupBox>
-
-                    <GroupBox Header="Database Options" Style="{StaticResource ModernGroupBox}">
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
-                            <Label Content="DB 'admin' Password (leave blank to generate):" Style="{StaticResource ModernLabel}"/>
-                            <TextBox x:Name="txtDbPassword" Style="{StaticResource ModernTextBox}"/>
+                            <GroupBox Header="Server Connection" Style="{StaticResource ModernGroupBox}">
+                                <StackPanel>
+                                    <Label Content="Host IP Address:" Style="{StaticResource ModernLabel}"/>
+                                    <TextBox x:Name="txtHost" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8"/>
+
+                                    <Label Content="SSH Username:" Style="{StaticResource ModernLabel}"/>
+                                    <TextBox x:Name="txtUsername" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8"/>
+
+                                    <Label x:Name="lblPassword">
+                                        <Label.Style>
+                                            <Style TargetType="Label" BasedOn="{StaticResource ModernLabel}">
+                                                <Setter Property="Content" Value="SSH Password:"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=chkUseSshKey, Path=IsChecked}" Value="True">
+                                                        <Setter Property="Content" Value="Sudo Password (for remote commands):"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Label.Style>
+                                    </Label>
+                                    <PasswordBox x:Name="txtPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,0,0,8"/>
+
+                                    <CheckBox x:Name="chkUseSshKey" Content="Use SSH Key Authentication" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center" Margin="0,5,0,8" Checked="chkUseSshKey_Checked"/>
+
+                                    <StackPanel x:Name="pnlSshKey" Visibility="{Binding IsChecked, ElementName=chkUseSshKey, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Label Content="Private Key File Path:" Style="{StaticResource ModernLabel}"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="txtKeyPath" Style="{StaticResource ModernTextBox}" IsReadOnly="True" Grid.Column="0"/>
+                                            <Button x:Name="btnBrowseKey" Content="Browse..." Grid.Column="1" Click="btnBrowseKey_Click" Margin="8,0,0,0" Style="{StaticResource ToolBarButton}"/>
+                                        </Grid>
+
+                                        <Label Content="Key Passphrase (if any):" Style="{StaticResource ModernLabel}" Margin="0,8,0,5"/>
+                                        <PasswordBox x:Name="txtKeyPassword" Style="{StaticResource ModernPasswordBox}"/>
+                                    </StackPanel>
+
+                                    <StackPanel Margin="0,15,0,0">
+                                        <CheckBox x:Name="chkRunAsRoot" Content="Run as root (provide root password)" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center"/>
+                                        <PasswordBox x:Name="txtRootPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,5,0,0" Visibility="{Binding IsChecked, ElementName=chkRunAsRoot, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="Server Version" Style="{StaticResource ModernGroupBox}">
+                                <ComboBox x:Name="cmbVersion" Style="{StaticResource ModernComboBox}"/>
+                            </GroupBox>
+
+                            <GroupBox Header="Database Options" Style="{StaticResource ModernGroupBox}">
+                                <StackPanel>
+                                    <Label Content="DB 'admin' Password (leave blank to generate):" Style="{StaticResource ModernLabel}"/>
+                                    <TextBox x:Name="txtDbPassword" Style="{StaticResource ModernTextBox}"/>
+                                </StackPanel>
+                            </GroupBox>
                         </StackPanel>
-                    </GroupBox>
-                </StackPanel>
-            </ScrollViewer>
+                    </ScrollViewer>
 
-            <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="0,15,0,0">
-                <Button x:Name="btnInstall" 
-                        Content="🚀 Begin Installation" 
-                        Style="{StaticResource ModernButton}"
-                        Click="btnInstall_Click" 
-                        Margin="0,0,0,8"/>
+                    <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="0,15,0,0">
+                        <Button x:Name="btnInstall"
+                                Content="🚀 Begin Installation"
+                                Style="{StaticResource ModernButton}"
+                                Click="btnInstall_Click"
+                                Margin="0,0,0,8"/>
 
-                <Button x:Name="btnInstallPanel" 
-                        Content="🎛️ Install PW-Panel" 
-                        Click="btnInstallPanel_Click">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
-                            <Setter Property="Background" Value="#16c60c"/>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#18d10d"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter Property="Background" Value="#12a009"/>
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Background" Value="#555555"/>
-                                    <Setter Property="Foreground" Value="#888888"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-            </StackPanel>
-        </Grid>
-        <GridSplitter Grid.Column="1" 
-                      Width="2" 
-                      Background="{StaticResource BorderColor}" 
-                      HorizontalAlignment="Center" 
-                      VerticalAlignment="Stretch"/>
+                        <Button x:Name="btnInstallPanel"
+                                Content="🎛️ Install PW-Panel"
+                                Click="btnInstallPanel_Click">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                                    <Setter Property="Background" Value="{StaticResource SuccessColor}"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#18d10d"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter Property="Background" Value="#12a009"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Background" Value="#555555"/>
+                                            <Setter Property="Foreground" Value="#888888"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+                <GridSplitter Grid.Column="1"
+                              Width="2"
+                              Background="{StaticResource BorderColor}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Stretch"/>
 
-        <GroupBox Header="Installation Log" 
-                  Grid.Column="2" 
-                  Style="{StaticResource ModernGroupBox}"
-                  Margin="0">
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Auto">
-                <TextBox x:Name="txtLog" 
-                         IsReadOnly="True" 
-                         Background="#1a1a1a" 
-                         Foreground="#e0e0e0" 
-                         FontFamily="Consolas, Monaco, 'Courier New'" 
-                         FontSize="12"
-                         TextWrapping="Wrap" 
-                         BorderThickness="0"
-                         Padding="15"
-                         VerticalScrollBarVisibility="Auto"
-                         HorizontalScrollBarVisibility="Auto"/>
-            </ScrollViewer>
-        </GroupBox>
-    </Grid>
+                <GroupBox Header="Installation Log"
+                          Grid.Column="2"
+                          Style="{StaticResource ModernGroupBox}"
+                          Margin="0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                        <TextBox x:Name="txtLog"
+                                 IsReadOnly="True"
+                                 Background="#1a1a1a"
+                                 Foreground="#e0e0e0"
+                                 FontFamily="Consolas, Monaco, 'Courier New'"
+                                 FontSize="12"
+                                 TextWrapping="Wrap"
+                                 BorderThickness="0"
+                                 Padding="15"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"/>
+                    </ScrollViewer>
+                </GroupBox>
+            </Grid>
+        </TabItem>
+        <TabItem Header="FTP/SFTP" Style="{StaticResource ModernTabItem}">
+            <Grid Margin="15">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <ToolBar Grid.Row="0" Margin="0,0,0,5" Background="Transparent">
+                    <Button x:Name="btnSftpConnect" Content="🔌 Connect" Style="{StaticResource ToolBarButton}" Click="btnSftpConnect_Click"/>
+                    <Button x:Name="btnSftpDisconnect" Content="✖️ Disconnect" Style="{StaticResource ToolBarButton}" Click="btnSftpDisconnect_Click" IsEnabled="False"/>
+                    <Separator/>
+                    <Button x:Name="btnSftpUpload" Content="⬆️ Upload" Style="{StaticResource ToolBarButton}" Click="btnSftpUpload_Click" IsEnabled="False"/>
+                    <Button x:Name="btnSftpDownload" Content="⬇️ Download" Style="{StaticResource ToolBarButton}" Click="btnSftpDownload_Click" IsEnabled="False"/>
+                    <Button x:Name="btnSftpEdit" Content="✏️ Edit" Style="{StaticResource ToolBarButton}" Click="btnSftpEdit_Click" IsEnabled="False"/>
+                    <Separator/>
+                    <Button x:Name="btnNewFile" Content="➕ New File" Style="{StaticResource ToolBarButton}" Click="btnNewFile_Click" IsEnabled="False"/>
+                    <Button x:Name="btnNewFolder" Content="📁 New Folder" Style="{StaticResource ToolBarButton}" Click="btnNewFolder_Click" IsEnabled="False"/>
+                </ToolBar>
+
+
+                <TextBox x:Name="txtRemotePath" Grid.Row="1" Style="{StaticResource ModernTextBox}" IsReadOnly="True" Margin="0,0,0,10"/>
+
+                <ListView x:Name="lvFiles" Grid.Row="2" Background="{StaticResource SecondaryBackground}" BorderBrush="{StaticResource BorderColor}" Foreground="{StaticResource TextPrimary}" MouseDoubleClick="lvFiles_MouseDoubleClick">
+                    <ListView.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Set Permissions" Click="PermissionsMenuItem_Click"/>
+                            <MenuItem Header="Delete" Click="DeleteMenuItem_Click"/>
+                        </ContextMenu>
+                    </ListView.ContextMenu>
+                    <ListView.View>
+                        <GridView>
+                            <GridView.ColumnHeaderContainerStyle>
+                                <Style TargetType="GridViewColumnHeader">
+                                    <Setter Property="Background" Value="{StaticResource SecondaryBackground}"/>
+                                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                </Style>
+                            </GridView.ColumnHeaderContainerStyle>
+                            <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}" Width="300"/>
+                            <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Size}" Width="120"/>
+                            <GridViewColumn Header="Permissions" DisplayMemberBinding="{Binding Permissions}" Width="100"/>
+                            <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding LastWriteTime, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}" Width="180"/>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </Grid>
+        </TabItem>
+    </TabControl>
 </Window>
