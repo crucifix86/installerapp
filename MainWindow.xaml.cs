@@ -19,6 +19,7 @@ using MySql.Data.MySqlClient;
 using System.Windows.Data;
 using System.Globalization;
 using System.Threading;
+using System.Windows.Navigation;
 
 namespace installerapp
 {
@@ -48,6 +49,12 @@ namespace installerapp
             cmbVersion.SelectedIndex = 0;
             cmbDbType.SelectedIndex = 0;
             dgSqlResults.CellEditEnding += DgSqlResults_CellEditEnding;
+        }
+
+        private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+        {
+            Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+            e.Handled = true;
         }
 
         private void cmbLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)

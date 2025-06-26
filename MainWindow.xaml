@@ -485,7 +485,7 @@
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource ServerLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtSqlServer" Margin="5" Style="{StaticResource ModernTextBox}"/>
-                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{DynamicResource PortLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{DynamicResource PortLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="center"/>
                             <TextBox Grid.Row="1" Grid.Column="3" x:Name="txtSqlPort" Margin="5" Style="{StaticResource ModernTextBox}"/>
                             <TextBlock Grid.Row="1" Grid.Column="4" Text="{DynamicResource DatabaseLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="1" Grid.Column="5" x:Name="txtSqlDatabase" Margin="5" Style="{StaticResource ModernTextBox}"/>
@@ -547,6 +547,25 @@
                     </Grid>
                 </Grid>
             </Grid>
+        </TabItem>
+        <TabItem Header="Clients" Style="{StaticResource ModernTabItem}">
+            <StackPanel Margin="15">
+                <TextBlock Margin="5" >
+                    <Hyperlink NavigateUri="https://havenpwi.net/install2/Installer/Clients/151+fixed.zip" RequestNavigate="Hyperlink_RequestNavigate">
+                        Perfect World 151
+                    </Hyperlink>
+                </TextBlock>
+                <TextBlock Margin="5">
+                    <Hyperlink NavigateUri="https://havenpwi.net/install2/Installer/Clients/PW153EN.zip" RequestNavigate="Hyperlink_RequestNavigate">
+                        Perfect World 153
+                    </Hyperlink>
+                </TextBlock>
+                <TextBlock Margin="5">
+                    <Hyperlink NavigateUri="https://havenpwi.net/install2/Installer/Clients/Perfect+World+International+155+v159.zip" RequestNavigate="Hyperlink_RequestNavigate">
+                        Perfect World 155
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
         </TabItem>
     </TabControl>
 </Window>
