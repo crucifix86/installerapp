@@ -37,6 +37,8 @@ namespace PwServerInstallerWpf
 
         // --- SQL client and related variables ---
         private IDbConnection _sqlConnection;
+        private DbDataAdapter _sqlDataAdapter;
+        private DataTable _sqlDataTable;
 
         public MainWindow()
         {
@@ -46,6 +48,7 @@ namespace PwServerInstallerWpf
             cmbVersion.Items.Add("1.5.5");
             cmbVersion.SelectedIndex = 0;
             cmbDbType.SelectedIndex = 0;
+            dgSqlResults.CellEditEnding += DgSqlResults_CellEditEnding;
         }
 
         #region --- SFTP Functionality ---
@@ -584,6 +587,35 @@ namespace PwServerInstallerWpf
             dgSqlResults.ItemsSource = null;
         }
 
+        private void DgSqlResults_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            if (e.EditAction == DataGridEditAction.Commit)
+            {
+                try
+                {
+                    if (_sqlDataAdapter != null && _sqlDataTable != null)
+                    {
+                        // End the current edit operation on the row
+                        // This is important to ensure the DataRow's state is updated before calling Update
+                        (e.Row.Item as DataRowView)?.EndEdit();
+
+                        _sqlDataAdapter.Update(_sqlDataTable);
+                        Log("Changes saved to the database.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to save changes: {ex.Message}", "Update Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    // Re-fetch the data to show the actual state from the database
+                    if (lvTables.SelectedItem is string tableName)
+                    {
+                        string query = _sqlConnection is SqlConnection ? $"SELECT * FROM [{tableName}]" : $"SELECT * FROM `{tableName}`";
+                        ExecuteQuery(query);
+                    }
+                }
+            }
+        }
+
         private void ExecuteQuery(string query)
         {
             if (_sqlConnection?.State != ConnectionState.Open)
@@ -600,45 +632,68 @@ namespace PwServerInstallerWpf
 
             try
             {
-                DbProviderFactory factory = (_sqlConnection is SqlConnection) ?
-                    (DbProviderFactory)SqlClientFactory.Instance : (DbProviderFactory)MySqlClientFactory.Instance;
-
-                using (var cmd = _sqlConnection.CreateCommand())
+                // For queries that return data (SELECT)
+                if (query.Trim().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
                 {
-                    cmd.CommandText = query;
+                    DbProviderFactory factory = (_sqlConnection is SqlConnection) ?
+                        (DbProviderFactory)SqlClientFactory.Instance : (DbProviderFactory)MySqlClientFactory.Instance;
 
-                    // For queries that return data (SELECT)
-                    if (query.Trim().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+                    _sqlDataAdapter = factory.CreateDataAdapter();
+                    var selectCommand = _sqlConnection.CreateCommand();
+                    selectCommand.CommandText = query;
+                    _sqlDataAdapter.SelectCommand = (DbCommand)selectCommand;
+
+                    // Use a command builder to automatically generate UPDATE, INSERT, DELETE commands
+                    // This only works for single-table SELECT statements with a primary key.
+                    try
                     {
-                        using (DbDataAdapter adapter = factory.CreateDataAdapter())
+                        DbCommandBuilder builder;
+                        if (_sqlConnection is SqlConnection)
                         {
-                            adapter.SelectCommand = (DbCommand)cmd;
-                            DataTable dataTable = new DataTable();
-                            adapter.Fill(dataTable);
-                            dgSqlResults.ItemsSource = dataTable.DefaultView;
-                            Log($"Executed query: {query}");
+                            builder = new SqlCommandBuilder((SqlDataAdapter)_sqlDataAdapter);
                         }
+                        else
+                        {
+                            builder = new MySqlCommandBuilder((MySqlDataAdapter)_sqlDataAdapter);
+                        }
+                        _sqlDataAdapter.UpdateCommand = builder.GetUpdateCommand();
+                        _sqlDataAdapter.InsertCommand = builder.GetInsertCommand();
+                        _sqlDataAdapter.DeleteCommand = builder.GetDeleteCommand();
                     }
-                    else // For queries that don't return data (DROP, CREATE, INSERT, etc.)
+                    catch (Exception ex)
                     {
+                        Log($"Could not create command builder (table might be read-only): {ex.Message}");
+                    }
+
+                    _sqlDataTable = new DataTable();
+                    _sqlDataAdapter.Fill(_sqlDataTable);
+                    dgSqlResults.ItemsSource = _sqlDataTable.DefaultView;
+                    dgSqlResults.IsReadOnly = false; // Make the datagrid editable
+                    Log($"Executed query: {query}");
+                }
+                else // For queries that don't return data (DROP, CREATE, INSERT, etc.)
+                {
+                    using (var cmd = _sqlConnection.CreateCommand())
+                    {
+                        cmd.CommandText = query;
                         int recordsAffected = cmd.ExecuteNonQuery();
                         Log($"Executed non-query. {recordsAffected} records affected. Query: {query}");
                         dgSqlResults.ItemsSource = null; // Clear previous results
+                        dgSqlResults.IsReadOnly = true; // Make datagrid readonly for non-select queries
                     }
                 }
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error executing query: {ex.Message}", "Query Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                dgSqlResults.IsReadOnly = true;
             }
         }
-
 
         private void btnExecuteSql_Click(object sender, RoutedEventArgs e)
         {
             ExecuteQuery(txtSqlQuery.Text);
         }
-
 
         private void RefreshTableList()
         {
@@ -749,7 +804,6 @@ namespace PwServerInstallerWpf
                 RefreshTableList();
             }
         }
-
 
         #endregion
 
