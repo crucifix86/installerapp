@@ -313,6 +313,10 @@
                         <ComboBox x:Name="cmbLanguage" SelectionChanged="cmbLanguage_SelectionChanged" Width="120" SelectedIndex="0">
                             <ComboBoxItem Content="English" Tag="en-US"/>
                             <ComboBoxItem Content="Indonesian" Tag="id-ID"/>
+                            <ComboBoxItem Content="Русский" Tag="ru-RU"/>
+                            <ComboBoxItem Content="中文" Tag="zh-CN"/>
+                            <ComboBoxItem Content="Português" Tag="pt-BR"/>
+                            <ComboBoxItem Content="Filipino" Tag="fil-PH"/>
                         </ComboBox>
                     </StackPanel>
 
