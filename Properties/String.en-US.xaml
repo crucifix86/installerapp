@@ -1,0 +1,65 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- General -->
+    <sys:String x:Key="Title">Perfect World Server Installer</sys:String>
+    <sys:String x:Key="InstallerTab">Installer</sys:String>
+
+    <!-- Installer Tab -->
+    <sys:String x:Key="HeaderText">Perfect World Server Installer</sys:String>
+    <sys:String x:Key="SubHeaderText">Automated installation tool</sys:String>
+    <sys:String x:Key="ServerConnectionGroup">Server Connection</sys:String>
+    <sys:String x:Key="HostIpLabel">Host IP Address:</sys:String>
+    <sys:String x:Key="SshUsernameLabel">SSH Username:</sys:String>
+    <sys:String x:Key="SshPasswordLabel">SSH Password:</sys:String>
+    <sys:String x:Key="SudoPasswordLabel">Sudo Password (for remote commands):</sys:String>
+    <sys:String x:Key="UseSshKeyCheckbox">Use SSH Key Authentication</sys:String>
+    <sys:String x:Key="PrivateKeyPathLabel">Private Key File Path:</sys:String>
+    <sys:String x:Key="BrowseButton">Browse...</sys:String>
+    <sys:String x:Key="KeyPassphraseLabel">Key Passphrase (if any):</sys:String>
+    <sys:String x:Key="RunAsRootCheckbox">Run as root (provide root password)</sys:String>
+    <sys:String x:Key="ServerVersionGroup">Server Version</sys:String>
+    <sys:String x:Key="DatabaseOptionsGroup">Database Options</sys:String>
+    <sys:String x:Key="DbPasswordLabel">DB 'admin' Password (leave blank to generate):</sys:String>
+    <sys:String x:Key="BeginInstallationButton">🚀 Begin Installation</sys:String>
+    <sys:String x:Key="InstallPanelButton">🎛️ Install PW-Panel</sys:String>
+    <sys:String x:Key="InstallationLogGroup">Installation Log</sys:String>
+
+    <!-- FTP/SFTP Tab -->
+    <sys:String x:Key="FtpTab">FTP/SFTP</sys:String>
+    <sys:String x:Key="ConnectButton">🔌 Connect</sys:String>
+    <sys:String x:Key="DisconnectButton">✖️ Disconnect</sys:String>
+    <sys:String x:Key="UploadButton">⬆️ Upload</sys:String>
+    <sys:String x:Key="DownloadButton">⬇️ Download</sys:String>
+    <sys:String x:Key="EditButton">✏️ Edit</sys:String>
+    <sys:String x:Key="NewFileButton">➕ New File</sys:String>
+    <sys:String x:Key="NewFolderButton">📁 New Folder</sys:String>
+    <sys:String x:Key="SetPermissionsMenu">Set Permissions</sys:String>
+    <sys:String x:Key="DeleteMenu">Delete</sys:String>
+    <sys:String x:Key="NameColumn">Name</sys:String>
+    <sys:String x:Key="SizeColumn">Size</sys:String>
+    <sys:String x:Key="PermissionsColumn">Permissions</sys:String>
+    <sys:String x:Key="ModifiedColumn">Modified</sys:String>
+
+    <!-- SQL Database Tab -->
+    <sys:String x:Key="SqlDatabaseTab">SQL Database</sys:String>
+    <sys:String x:Key="ConnectionGroup">Connection</sys:String>
+    <sys:String x:Key="DbTypeLabel">DB Type:</sys:String>
+    <sys:String x:Key="SqlServerItem">SQL Server</sys:String>
+    <sys:String x:Key="MySqlItem">MariaDB/MySQL</sys:String>
+    <sys:String x:Key="ServerLabel">Server:</sys:String>
+    <sys:String x:Key="PortLabel">Port:</sys:String>
+    <sys:String x:Key="DatabaseLabel">Database:</sys:String>
+    <sys:String x:Key="UserLabel">User:</sys:String>
+    <sys:String x:Key="PasswordLabel">Password:</sys:String>
+    <sys:String x:Key="ConnectSqlButton">Connect</sys:String>
+    <sys:String x:Key="DisconnectSqlButton">Disconnect</sys:String>
+    <sys:String x:Key="TablesGroup">Tables</sys:String>
+    <sys:String x:Key="ViewDataMenu">View Data</sys:String>
+    <sys:String x:Key="DropTableMenu">Drop Table</sys:String>
+    <sys:String x:Key="NewTableButton">New Table</sys:String>
+    <sys:String x:Key="RefreshButton">Refresh</sys:String>
+    <sys:String x:Key="SqlQueryGroup">SQL Query</sys:String>
+    <sys:String x:Key="ExecuteButton">Execute</sys:String>
+</ResourceDictionary>

@@ -14,31 +14,30 @@ using System.Linq;
 using Renci.SshNet.Common;
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
+using System.Data.SqlClient; // Reverted back to the original SQL client
 using MySql.Data.MySqlClient;
 using System.Windows.Data;
+using System.Globalization;
+using System.Threading;
 
-namespace PwServerInstallerWpf
+namespace installerapp
 {
     public partial class MainWindow : Window
     {
         private bool _useRoot = false;
         private string _rootPassword = "";
         private bool _useSudo = false;
-        private string _privateKeyFilePath;
-
-        // --- SFTP client and related variables ---
-        private SftpClient _sftpClient;
+        private string _privateKeyFilePath = string.Empty;
+        private SftpClient? _sftpClient;
         private string _currentRemotePath = "/";
-        private FileSystemWatcher _fileWatcher;
-        private string _localTempFilePath;
-        private string _remoteEditedFilePath;
+        private FileSystemWatcher? _fileWatcher;
+        private string? _localTempFilePath;
+        private string? _remoteEditedFilePath;
         private bool _isHandlingDisconnect = false;
+        private IDbConnection? _sqlConnection;
+        private DbDataAdapter? _sqlDataAdapter;
+        private DataTable? _sqlDataTable;
 
-        // --- SQL client and related variables ---
-        private IDbConnection _sqlConnection;
-        private DbDataAdapter _sqlDataAdapter;
-        private DataTable _sqlDataTable;
 
         public MainWindow()
         {
@@ -51,8 +50,20 @@ namespace PwServerInstallerWpf
             dgSqlResults.CellEditEnding += DgSqlResults_CellEditEnding;
         }
 
-        #region --- SFTP Functionality ---
+        private void cmbLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!this.IsLoaded || cmbLanguage.SelectedItem == null) return;
 
+            if (cmbLanguage.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag is string cultureCode)
+            {
+                if (Thread.CurrentThread.CurrentUICulture.Name != cultureCode)
+                {
+                    LocalizationManager.SetLanguage(cultureCode);
+                }
+            }
+        }
+
+        #region --- SFTP Functionality ---
         private async void btnSftpConnect_Click(object sender, RoutedEventArgs e)
         {
             bool useSshKey = chkUseSshKey.IsChecked == true;
@@ -93,7 +104,7 @@ namespace PwServerInstallerWpf
 
                 if (_sftpClient.IsConnected)
                 {
-                    _isHandlingDisconnect = false; // Reset flag on successful connect
+                    _isHandlingDisconnect = false;
                     Log("SFTP Connection Successful.");
                     _currentRemotePath = _sftpClient.WorkingDirectory;
                     txtRemotePath.Text = _currentRemotePath;
@@ -127,9 +138,9 @@ namespace PwServerInstallerWpf
             SetSftpButtonsState(false);
         }
 
-        private void OnSftpClientError(object sender, ExceptionEventArgs e)
+        private void OnSftpClientError(object? sender, ExceptionEventArgs e)
         {
-            if (_isHandlingDisconnect || _sftpClient == null || _sftpClient.IsConnected)
+            if (_isHandlingDisconnect || _sftpClient == null || !_sftpClient.IsConnected)
             {
                 return;
             }
@@ -161,7 +172,7 @@ namespace PwServerInstallerWpf
             btnNewFolder.IsEnabled = connected;
         }
 
-        private void ListRemoteFiles(string path = null)
+        private void ListRemoteFiles(string? path = null)
         {
             if (_sftpClient?.IsConnected != true) return;
             try
@@ -242,7 +253,7 @@ namespace PwServerInstallerWpf
         private void btnNewFolder_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new InputDialog("Create New Folder", "Enter folder name:");
-            if (dialog.ShowDialog() == true)
+            if (dialog.ShowDialog() == true && _sftpClient != null)
             {
                 string folderName = dialog.InputText;
                 if (string.IsNullOrWhiteSpace(folderName)) return;
@@ -264,7 +275,7 @@ namespace PwServerInstallerWpf
         private void btnNewFile_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new InputDialog("Create New File", "Enter file name:");
-            if (dialog.ShowDialog() == true)
+            if (dialog.ShowDialog() == true && _sftpClient != null)
             {
                 string fileName = dialog.InputText;
                 if (string.IsNullOrWhiteSpace(fileName)) return;
@@ -288,7 +299,7 @@ namespace PwServerInstallerWpf
 
         private void PermissionsMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.Name == "..") return;
+            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.Name == ".." || _sftpClient == null) return;
 
             try
             {
@@ -326,7 +337,7 @@ namespace PwServerInstallerWpf
 
         private void DeleteMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.Name == "..")
+            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.Name == ".." || _sftpClient == null)
             {
                 MessageBox.Show("Please select a file or directory to delete.", "Selection Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
@@ -382,7 +393,7 @@ namespace PwServerInstallerWpf
 
         private void btnSftpDownload_Click(object sender, RoutedEventArgs e)
         {
-            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.IsDirectory)
+            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.IsDirectory || _sftpClient == null)
             {
                 MessageBox.Show("Please select a file to download.", "Selection Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
@@ -407,13 +418,13 @@ namespace PwServerInstallerWpf
 
         private void btnSftpEdit_Click(object sender, RoutedEventArgs e)
         {
-            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.IsDirectory)
+            if (lvFiles.SelectedItem is not SftpFile selectedFile || selectedFile.IsDirectory || _sftpClient == null)
             {
                 MessageBox.Show("Please select a file to edit.", "Selection Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            string notepadPlusPlusPath = FindNotepadPlusPlus();
+            string? notepadPlusPlusPath = FindNotepadPlusPlus();
             if (string.IsNullOrEmpty(notepadPlusPlusPath))
             {
                 var result = MessageBox.Show("Notepad++ not found. Would you like to download it from https://notepad-plus-plus.org/downloads/ ?", "Notepad++ Not Found", MessageBoxButton.YesNo, MessageBoxImage.Question);
@@ -450,16 +461,17 @@ namespace PwServerInstallerWpf
             }
         }
 
-        private string FindNotepadPlusPlus()
+        private string? FindNotepadPlusPlus()
         {
-            var possiblePaths = new List<string>
+            var possiblePaths = new List<string?>
             {
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
             };
 
-            foreach (string path in possiblePaths.Distinct())
+            foreach (string? path in possiblePaths.Distinct())
             {
+                if (string.IsNullOrEmpty(path)) continue;
                 string notepadPlusPlusPath = Path.Combine(path, "Notepad++", "notepad++.exe");
                 if (File.Exists(notepadPlusPlusPath))
                 {
@@ -471,17 +483,23 @@ namespace PwServerInstallerWpf
 
         private void OnTempFileChanged(object sender, FileSystemEventArgs e)
         {
-            if (e.ChangeType != WatcherChangeTypes.Changed) return;
+            if (e.ChangeType != WatcherChangeTypes.Changed || _sftpClient == null) return;
             Dispatcher.Invoke(() =>
             {
                 try
                 {
-                    _fileWatcher.EnableRaisingEvents = false;
-                    using (var fileStream = new FileStream(_localTempFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    if (_fileWatcher != null)
                     {
-                        _sftpClient.UploadFile(fileStream, _remoteEditedFilePath);
+                        _fileWatcher.EnableRaisingEvents = false;
                     }
-                    Log($"File '{Path.GetFileName(_remoteEditedFilePath)}' was updated on the server.");
+                    if (_localTempFilePath != null && _remoteEditedFilePath != null)
+                    {
+                        using (var fileStream = new FileStream(_localTempFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                        {
+                            _sftpClient.UploadFile(fileStream, _remoteEditedFilePath);
+                        }
+                        Log($"File '{Path.GetFileName(_remoteEditedFilePath)}' was updated on the server.");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -489,11 +507,17 @@ namespace PwServerInstallerWpf
                 }
                 finally
                 {
-                    _fileWatcher.Changed -= OnTempFileChanged;
-                    _fileWatcher.Dispose();
-                    _fileWatcher = null;
-                    try { File.Delete(_localTempFilePath); }
-                    catch (Exception ex) { Log($"Could not delete temp file '{_localTempFilePath}': {ex.Message}"); }
+                    if (_fileWatcher != null)
+                    {
+                        _fileWatcher.Changed -= OnTempFileChanged;
+                        _fileWatcher.Dispose();
+                        _fileWatcher = null;
+                    }
+                    if (_localTempFilePath != null)
+                    {
+                        try { File.Delete(_localTempFilePath); }
+                        catch (Exception ex) { Log($"Could not delete temp file '{_localTempFilePath}': {ex.Message}"); }
+                    }
                 }
             });
         }
@@ -509,14 +533,12 @@ namespace PwServerInstallerWpf
         }
 
         private void chkUseSshKey_Checked(object sender, RoutedEventArgs e) { }
-
         #endregion
 
         #region --- SQL Database Functionality ---
-
         private void btnSqlConnection_Click(object sender, RoutedEventArgs e)
         {
-            string dbType = (cmbDbType.SelectedItem as ComboBoxItem)?.Content.ToString();
+            string? dbType = (cmbDbType.SelectedItem as ComboBoxItem)?.Content.ToString();
             string server = txtSqlServer.Text;
             string port = txtSqlPort.Text;
             string database = txtSqlDatabase.Text;
@@ -540,7 +562,7 @@ namespace PwServerInstallerWpf
                     {
                         serverAndPort += "," + port;
                     }
-                    connectionString = $"Server={serverAndPort};Database={database};User Id={userId};Password={password};";
+                    connectionString = $"Server={serverAndPort};Database={database};User Id={userId};Password={password};TrustServerCertificate=True;";
                     _sqlConnection = new SqlConnection(connectionString);
                 }
                 else // MariaDB/MySQL
@@ -587,7 +609,7 @@ namespace PwServerInstallerWpf
             dgSqlResults.ItemsSource = null;
         }
 
-        private void DgSqlResults_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        private void DgSqlResults_CellEditEnding(object? sender, DataGridCellEditEndingEventArgs e)
         {
             if (e.EditAction == DataGridEditAction.Commit)
             {
@@ -595,18 +617,24 @@ namespace PwServerInstallerWpf
                 {
                     if (_sqlDataAdapter != null && _sqlDataTable != null)
                     {
-                        // End the current edit operation on the row
-                        // This is important to ensure the DataRow's state is updated before calling Update
                         (e.Row.Item as DataRowView)?.EndEdit();
 
-                        _sqlDataAdapter.Update(_sqlDataTable);
+                        if (_sqlDataAdapter is SqlDataAdapter sqlAdapter)
+                        {
+                            new SqlCommandBuilder(sqlAdapter);
+                            sqlAdapter.Update(_sqlDataTable);
+                        }
+                        else if (_sqlDataAdapter is MySqlDataAdapter mySqlAdapter)
+                        {
+                            new MySqlCommandBuilder(mySqlAdapter);
+                            mySqlAdapter.Update(_sqlDataTable);
+                        }
                         Log("Changes saved to the database.");
                     }
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show($"Failed to save changes: {ex.Message}", "Update Failed", MessageBoxButton.OK, MessageBoxImage.Error);
-                    // Re-fetch the data to show the actual state from the database
                     if (lvTables.SelectedItem is string tableName)
                     {
                         string query = _sqlConnection is SqlConnection ? $"SELECT * FROM [{tableName}]" : $"SELECT * FROM `{tableName}`";
@@ -632,54 +660,37 @@ namespace PwServerInstallerWpf
 
             try
             {
-                // For queries that return data (SELECT)
                 if (query.Trim().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
                 {
-                    DbProviderFactory factory = (_sqlConnection is SqlConnection) ?
-                        (DbProviderFactory)SqlClientFactory.Instance : (DbProviderFactory)MySqlClientFactory.Instance;
-
-                    _sqlDataAdapter = factory.CreateDataAdapter();
-                    var selectCommand = _sqlConnection.CreateCommand();
-                    selectCommand.CommandText = query;
-                    _sqlDataAdapter.SelectCommand = (DbCommand)selectCommand;
-
-                    // Use a command builder to automatically generate UPDATE, INSERT, DELETE commands
-                    // This only works for single-table SELECT statements with a primary key.
-                    try
+                    if (_sqlConnection is SqlConnection sqlConn)
                     {
-                        DbCommandBuilder builder;
-                        if (_sqlConnection is SqlConnection)
-                        {
-                            builder = new SqlCommandBuilder((SqlDataAdapter)_sqlDataAdapter);
-                        }
-                        else
-                        {
-                            builder = new MySqlCommandBuilder((MySqlDataAdapter)_sqlDataAdapter);
-                        }
-                        _sqlDataAdapter.UpdateCommand = builder.GetUpdateCommand();
-                        _sqlDataAdapter.InsertCommand = builder.GetInsertCommand();
-                        _sqlDataAdapter.DeleteCommand = builder.GetDeleteCommand();
+                        _sqlDataAdapter = new SqlDataAdapter(query, sqlConn);
                     }
-                    catch (Exception ex)
+                    else if (_sqlConnection is MySqlConnection mySqlConn)
                     {
-                        Log($"Could not create command builder (table might be read-only): {ex.Message}");
+                        _sqlDataAdapter = new MySqlDataAdapter(query, mySqlConn);
+                    }
+                    else
+                    {
+                        MessageBox.Show("Unsupported database connection type.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
                     }
 
                     _sqlDataTable = new DataTable();
                     _sqlDataAdapter.Fill(_sqlDataTable);
                     dgSqlResults.ItemsSource = _sqlDataTable.DefaultView;
-                    dgSqlResults.IsReadOnly = false; // Make the datagrid editable
+                    dgSqlResults.IsReadOnly = false;
                     Log($"Executed query: {query}");
                 }
-                else // For queries that don't return data (DROP, CREATE, INSERT, etc.)
+                else
                 {
                     using (var cmd = _sqlConnection.CreateCommand())
                     {
                         cmd.CommandText = query;
                         int recordsAffected = cmd.ExecuteNonQuery();
                         Log($"Executed non-query. {recordsAffected} records affected. Query: {query}");
-                        dgSqlResults.ItemsSource = null; // Clear previous results
-                        dgSqlResults.IsReadOnly = true; // Make datagrid readonly for non-select queries
+                        dgSqlResults.ItemsSource = null;
+                        dgSqlResults.IsReadOnly = true;
                     }
                 }
             }
@@ -701,25 +712,26 @@ namespace PwServerInstallerWpf
 
             try
             {
-                DataTable schema;
-                if (_sqlConnection is SqlConnection)
+                DataTable? schema = null;
+                if (_sqlConnection is SqlConnection sqlConnection)
                 {
-                    schema = ((SqlConnection)_sqlConnection).GetSchema("Tables");
+                    schema = sqlConnection.GetSchema("Tables");
                 }
-                else // MySqlConnection
+                else if (_sqlConnection is MySqlConnection mySqlConnection)
                 {
-                    schema = ((MySqlConnection)_sqlConnection).GetSchema("Tables");
+                    schema = mySqlConnection.GetSchema("Tables");
                 }
 
-                var tables = new List<string>();
-                foreach (DataRow row in schema.Rows)
+                if (schema != null)
                 {
-                    // For SQL Server, table name is in column "TABLE_NAME"
-                    // For MySQL, it's also "TABLE_NAME"
-                    tables.Add(row["TABLE_NAME"].ToString());
+                    var tables = new List<string>();
+                    foreach (DataRow row in schema.Rows)
+                    {
+                        tables.Add(row["TABLE_NAME"].ToString() ?? string.Empty);
+                    }
+                    lvTables.ItemsSource = tables.OrderBy(t => t);
+                    Log("Table list refreshed.");
                 }
-                lvTables.ItemsSource = tables.OrderBy(t => t);
-                Log("Table list refreshed.");
             }
             catch (Exception ex)
             {
@@ -739,7 +751,7 @@ namespace PwServerInstallerWpf
                 string query = $"SELECT * FROM `{tableName}`";
                 if (_sqlConnection is SqlConnection)
                 {
-                    query = $"SELECT * FROM [{tableName}]"; // Use brackets for SQL Server
+                    query = $"SELECT * FROM [{tableName}]";
                 }
                 txtSqlQuery.Text = query;
                 ExecuteQuery(query);
@@ -773,7 +785,7 @@ namespace PwServerInstallerWpf
                         query = $"DROP TABLE [{tableName}]";
                     }
                     ExecuteQuery(query);
-                    RefreshTableList(); // Refresh the list after dropping the table
+                    RefreshTableList();
                 }
             }
         }
@@ -804,11 +816,9 @@ namespace PwServerInstallerWpf
                 RefreshTableList();
             }
         }
-
         #endregion
 
-        #region --- Core Logic and Installation Steps (RESTORED) ---
-
+        #region --- Core Logic and Installation Steps ---
         private async void btnInstall_Click(object sender, RoutedEventArgs e)
         {
             bool useSshKey = chkUseSshKey.IsChecked == true;
@@ -832,7 +842,13 @@ namespace PwServerInstallerWpf
             string host = txtHost.Text;
             string username = txtUsername.Text;
             string userPassword = txtPassword.Password;
-            string version = cmbVersion.SelectedItem.ToString();
+            string? version = cmbVersion.SelectedItem?.ToString();
+            if (version == null)
+            {
+                MessageBox.Show("Please select a server version.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                btnInstall.IsEnabled = true;
+                return;
+            }
             string dbPassword = string.IsNullOrWhiteSpace(txtDbPassword.Text) ? Path.GetRandomFileName().Replace(".", "").Substring(0, 10) : txtDbPassword.Text;
 
             try
@@ -1110,7 +1126,7 @@ FLUSH PRIVILEGES;";
                     sqlUrl = "http://havenpwi.net/install2/Installer/153/db.sql";
                     sqlFile = "db.sql";
                     break;
-                case "1.5.1": // Fallthrough to use 1.5.5's database
+                case "1.5.1":
                 case "1.5.5":
                     sqlUrl = "http://havenpwi.net/install2/Installer/155/pwa.sql";
                     sqlFile = "pwa.sql";
@@ -1174,8 +1190,7 @@ FLUSH PRIVILEGES;";
         }
         #endregion
 
-        #region --- PW-Panel Installation (RESTORED) ---
-
+        #region --- PW-Panel Installation ---
         private async void btnInstallPanel_Click(object sender, RoutedEventArgs e)
         {
             bool useSshKey = chkUseSshKey.IsChecked == true;
@@ -1234,14 +1249,14 @@ FLUSH PRIVILEGES;";
             string host = txtHost.Text;
             string username = txtUsername.Text;
             string userPassword = txtPassword.Password;
-            string panelCredentials = null;
+            string? panelCredentials = null;
 
             try
             {
                 Log("--- Starting PW-Panel Installation ---");
                 Log($"Read credentials from '{Path.GetFileName(filePath)}': User='{dbUser}'");
 
-                panelCredentials = await Task.Run<string>(() =>
+                panelCredentials = await Task.Run<string?>(() =>
                 {
                     AuthenticationMethod authMethod;
                     if (useSshKey)
@@ -1528,8 +1543,7 @@ FLUSH PRIVILEGES;";
 
         #endregion
 
-        #region --- SSH and Logging Helpers (RESTORED) ---
-
+        #region --- SSH and Logging Helpers ---
         private void LogSection(string section) => Log($"\n--- {section} ---\n");
 
         private void Log(string message)
@@ -1597,15 +1611,14 @@ FLUSH PRIVILEGES;";
     }
 
     #region --- Helper Classes for Dialogs and SFTP items ---
-
     public class SftpFile
     {
-        public string Name { get; set; }
-        public string FullName { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
         public bool IsDirectory { get; set; }
         public long Length { get; set; }
         public DateTime LastWriteTime { get; set; }
-        public string Permissions { get; set; }
+        public string Permissions { get; set; } = string.Empty;
         public string Size => IsDirectory ? "<DIR>" : $"{Math.Round(Length / 1024.0, 2)} KB";
     }
 
@@ -1620,18 +1633,18 @@ FLUSH PRIVILEGES;";
             Width = 300;
             Height = 150;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            var panel = new StackPanel { Margin = new Thickness(10) };
-            panel.Children.Add(new TextBlock { Text = prompt, Margin = new Thickness(0, 0, 0, 5) });
+            var mainPanel = new StackPanel { Margin = new Thickness(10) };
+            mainPanel.Children.Add(new TextBlock { Text = prompt, Margin = new Thickness(0, 0, 0, 5) });
             _textBox = new TextBox { Margin = new Thickness(0, 0, 0, 10) };
-            panel.Children.Add(_textBox);
+            mainPanel.Children.Add(_textBox);
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             var okButton = new Button { Content = "OK", IsDefault = true, Width = 75, Margin = new Thickness(5) };
             okButton.Click += (s, e) => { InputText = _textBox.Text; DialogResult = true; };
             var cancelButton = new Button { Content = "Cancel", IsCancel = true, Width = 75, Margin = new Thickness(5) };
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(cancelButton);
-            panel.Children.Add(buttonPanel);
-            Content = panel;
+            Content = mainPanel;
+            InputText = string.Empty;
         }
     }
 
@@ -1724,6 +1737,7 @@ FLUSH PRIVILEGES;";
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(cancelButton);
             mainPanel.Children.Add(buttonPanel);
+
             Content = mainPanel;
 
             UpdatePermissions();
@@ -1763,11 +1777,11 @@ FLUSH PRIVILEGES;";
             Height = 350;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-            var panel = new StackPanel { Margin = new Thickness(10) };
+            var mainPanel = new StackPanel { Margin = new Thickness(10) };
 
-            panel.Children.Add(new TextBlock { Text = "Table Name:" });
+            mainPanel.Children.Add(new TextBlock { Text = "Table Name:" });
             _tableNameTextBox = new TextBox { Margin = new Thickness(0, 0, 0, 10) };
-            panel.Children.Add(_tableNameTextBox);
+            mainPanel.Children.Add(_tableNameTextBox);
 
             _columnsGrid = new DataGrid
             {
@@ -1790,7 +1804,7 @@ FLUSH PRIVILEGES;";
             _columnsGrid.Columns.Add(typeCol);
             _columnsGrid.Columns.Add(pkCol);
 
-            panel.Children.Add(_columnsGrid);
+            mainPanel.Children.Add(_columnsGrid);
 
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
             var okButton = new Button { Content = "OK", IsDefault = true, Width = 75, Margin = new Thickness(5) };
@@ -1803,16 +1817,19 @@ FLUSH PRIVILEGES;";
             var cancelButton = new Button { Content = "Cancel", IsCancel = true, Width = 75, Margin = new Thickness(5) };
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(cancelButton);
-            panel.Children.Add(buttonPanel);
+            mainPanel.Children.Add(buttonPanel);
 
-            Content = panel;
+            Content = mainPanel;
+
+            TableName = string.Empty;
+            Columns = new List<ColumnInfo>();
         }
     }
 
     public class ColumnInfo
     {
-        public string Name { get; set; }
-        public string DataType { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string DataType { get; set; } = string.Empty;
         public bool IsPrimaryKey { get; set; }
     }
     #endregion

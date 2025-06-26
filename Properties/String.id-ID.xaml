@@ -1,0 +1,65 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- General -->
+    <sys:String x:Key="Title">Pemasang Server Perfect World</sys:String>
+    <sys:String x:Key="InstallerTab">Pemasang</sys:String>
+
+    <!-- Installer Tab -->
+    <sys:String x:Key="HeaderText">Pemasang Server Perfect World</sys:String>
+    <sys:String x:Key="SubHeaderText">Alat instalasi otomatis</sys:String>
+    <sys:String x:Key="ServerConnectionGroup">Koneksi Server</sys:String>
+    <sys:String x:Key="HostIpLabel">Alamat IP Host:</sys:String>
+    <sys:String x:Key="SshUsernameLabel">Nama Pengguna SSH:</sys:String>
+    <sys:String x:Key="SshPasswordLabel">Kata Sandi SSH:</sys:String>
+    <sys:String x:Key="SudoPasswordLabel">Kata Sandi Sudo (untuk perintah jarak jauh):</sys:String>
+    <sys:String x:Key="UseSshKeyCheckbox">Gunakan Otentikasi Kunci SSH</sys:String>
+    <sys:String x:Key="PrivateKeyPathLabel">Jalur File Kunci Pribadi:</sys:String>
+    <sys:String x:Key="BrowseButton">Jelajahi...</sys:String>
+    <sys:String x:Key="KeyPassphraseLabel">Frasa Sandi Kunci (jika ada):</sys:String>
+    <sys:String x:Key="RunAsRootCheckbox">Jalankan sebagai root (berikan kata sandi root)</sys:String>
+    <sys:String x:Key="ServerVersionGroup">Versi Server</sys:String>
+    <sys:String x:Key="DatabaseOptionsGroup">Opsi Database</sys:String>
+    <sys:String x:Key="DbPasswordLabel">Kata Sandi 'admin' DB (biarkan kosong untuk membuat):</sys:String>
+    <sys:String x:Key="BeginInstallationButton">🚀 Mulai Instalasi</sys:String>
+    <sys:String x:Key="InstallPanelButton">🎛️ Pasang PW-Panel</sys:String>
+    <sys:String x:Key="InstallationLogGroup">Log Instalasi</sys:String>
+
+    <!-- FTP/SFTP Tab -->
+    <sys:String x:Key="FtpTab">FTP/SFTP</sys:String>
+    <sys:String x:Key="ConnectButton">🔌 Sambungkan</sys:String>
+    <sys:String x:Key="DisconnectButton">✖️ Putuskan</sys:String>
+    <sys:String x:Key="UploadButton">⬆️ Unggah</sys:String>
+    <sys:String x:Key="DownloadButton">⬇️ Unduh</sys:String>
+    <sys:String x:Key="EditButton">✏️ Sunting</sys:String>
+    <sys:String x:Key="NewFileButton">➕ File Baru</sys:String>
+    <sys:String x:Key="NewFolderButton">📁 Folder Baru</sys:String>
+    <sys:String x:Key="SetPermissionsMenu">Atur Izin</sys:String>
+    <sys:String x:Key="DeleteMenu">Hapus</sys:String>
+    <sys:String x:Key="NameColumn">Nama</sys:String>
+    <sys:String x:Key="SizeColumn">Ukuran</sys:String>
+    <sys:String x:Key="PermissionsColumn">Izin</sys:String>
+    <sys:String x:Key="ModifiedColumn">Diubah</sys:String>
+
+    <!-- SQL Database Tab -->
+    <sys:String x:Key="SqlDatabaseTab">Database SQL</sys:String>
+    <sys:String x:Key="ConnectionGroup">Koneksi</sys:String>
+    <sys:String x:Key="DbTypeLabel">Tipe DB:</sys:String>
+    <sys:String x:Key="SqlServerItem">SQL Server</sys:String>
+    <sys:String x:Key="MySqlItem">MariaDB/MySQL</sys:String>
+    <sys:String x:Key="ServerLabel">Server:</sys:String>
+    <sys:String x:Key="PortLabel">Port:</sys:String>
+    <sys:String x:Key="DatabaseLabel">Database:</sys:String>
+    <sys:String x:Key="UserLabel">Pengguna:</sys:String>
+    <sys:String x:Key="PasswordLabel">Kata Sandi:</sys:String>
+    <sys:String x:Key="ConnectSqlButton">Sambungkan</sys:String>
+    <sys:String x:Key="DisconnectSqlButton">Putuskan</sys:String>
+    <sys:String x:Key="TablesGroup">Tabel</sys:String>
+    <sys:String x:Key="ViewDataMenu">Lihat Data</sys:String>
+    <sys:String x:Key="DropTableMenu">Hapus Tabel</sys:String>
+    <sys:String x:Key="NewTableButton">Tabel Baru</sys:String>
+    <sys:String x:Key="RefreshButton">Segarkan</sys:String>
+    <sys:String x:Key="SqlQueryGroup">Kueri SQL</sys:String>
+    <sys:String x:Key="ExecuteButton">Jalankan</sys:String>
+</ResourceDictionary>

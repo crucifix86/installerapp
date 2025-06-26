@@ -1,10 +1,10 @@
-﻿<Window x:Class="PwServerInstallerWpf.MainWindow"
+﻿<Window x:Class="installerapp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Perfect World Server Installer"
+        Title="{DynamicResource Title}"
         Height="750" Width="900"
         MinHeight="650" MinWidth="750"
         WindowStartupLocation="CenterScreen"
@@ -26,25 +26,17 @@
         <SolidColorBrush x:Key="WarningColor" Color="#ff8c00"/>
 
         <Style x:Key="ScrollBarThumbStyle" TargetType="{x:Type Thumb}">
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="OverridesDefaultStyle" Value="true"/>
-            <Setter Property="IsTabStop" Value="false"/>
-            <Setter Property="Focusable" Value="false"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Thumb}">
-                        <Border CornerRadius="4" Background="{StaticResource AccentColor}" BorderBrush="Transparent" BorderThickness="0" />
+                        <Border CornerRadius="4" Background="{StaticResource AccentColor}"/>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-
         <Style x:Key="ModernScrollBar" TargetType="{x:Type ScrollBar}">
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="OverridesDefaultStyle" Value="true"/>
             <Style.Triggers>
                 <Trigger Property="Orientation" Value="Horizontal">
-                    <Setter Property="Width" Value="Auto"/>
                     <Setter Property="Height" Value="8" />
                     <Setter Property="Template">
                         <Setter.Value>
@@ -53,7 +45,7 @@
                                     <Border CornerRadius="4" Background="#424242"/>
                                     <Track Name="PART_Track" IsDirectionReversed="False">
                                         <Track.Thumb>
-                                            <Thumb Style="{StaticResource ScrollBarThumbStyle}" Margin="0" Height="8" />
+                                            <Thumb Style="{StaticResource ScrollBarThumbStyle}" Height="8" />
                                         </Track.Thumb>
                                     </Track>
                                 </Grid>
@@ -63,7 +55,6 @@
                 </Trigger>
                 <Trigger Property="Orientation" Value="Vertical">
                     <Setter Property="Width" Value="8"/>
-                    <Setter Property="Height" Value="Auto" />
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="{x:Type ScrollBar}">
@@ -71,7 +62,7 @@
                                     <Border CornerRadius="4" Background="#424242"/>
                                     <Track Name="PART_Track" IsDirectionReversed="True">
                                         <Track.Thumb>
-                                            <Thumb Style="{StaticResource ScrollBarThumbStyle}" Margin="0" Width="8" />
+                                            <Thumb Style="{StaticResource ScrollBarThumbStyle}" Width="8" />
                                         </Track.Thumb>
                                     </Track>
                                 </Grid>
@@ -81,11 +72,9 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
-
         <Style x:Key="ModernButton" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource AccentColor}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="20,12"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -112,13 +101,11 @@
                 </Setter.Value>
             </Setter>
         </Style>
-
         <Style x:Key="ToolBarButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
             <Setter Property="Padding" Value="12,8"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Margin" Value="2"/>
         </Style>
-
         <Style x:Key="ModernTextBox" TargetType="TextBox">
             <Setter Property="Background" Value="{StaticResource SecondaryBackground}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
@@ -175,35 +162,13 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
                         <Grid>
-                            <ToggleButton Name="ToggleButton" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Foreground="{TemplateBinding Foreground}" IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" ClickMode="Press">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition />
-                                                    <ColumnDefinition Width="20" />
-                                                </Grid.ColumnDefinitions>
-                                                <ContentPresenter Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                                <Path Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 4 4 L 8 0 Z" Fill="{StaticResource TextSecondary}"/>
-                                            </Grid>
-                                        </Border>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                            </ToggleButton>
-                            <ContentPresenter Name="ContentSite" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" Margin="8,3,23,3" VerticalAlignment="Center" HorizontalAlignment="Left">
-                                <ContentPresenter.Resources>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-                                        <Setter Property="FontWeight" Value="Normal"/>
-                                    </Style>
-                                </ContentPresenter.Resources>
-                            </ContentPresenter>
-                            <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                            <ToggleButton Name="ToggleButton" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            <ContentPresenter Name="ContentSite" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" Margin="8,3,23,3" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                            <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True">
                                 <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
                                     <Border Background="{StaticResource SecondaryBackground}" BorderThickness="1" BorderBrush="{StaticResource BorderColor}" CornerRadius="4">
-                                        <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True">
-                                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                        <ScrollViewer Margin="4,6,4,6">
+                                            <StackPanel IsItemsHost="True"/>
                                         </ScrollViewer>
                                     </Border>
                                 </Grid>
@@ -237,7 +202,7 @@
                             <Border Grid.Row="0" Background="{StaticResource AccentColor}" CornerRadius="6,6,0,0" Padding="12,6">
                                 <ContentPresenter ContentSource="Header" TextBlock.Foreground="White" TextBlock.FontWeight="SemiBold" TextBlock.FontSize="13"/>
                             </Border>
-                            <Border Grid.Row="1" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0,0,6,6" Padding="{TemplateBinding Padding}">
+                            <Border Grid.Row="1" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" CornerRadius="0,0,6,6" Padding="{TemplateBinding Padding}">
                                 <ContentPresenter/>
                             </Border>
                         </Grid>
@@ -250,16 +215,13 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Margin" Value="0,0,0,5"/>
         </Style>
-
         <Style x:Key="ModernTabControl" TargetType="TabControl">
             <Setter Property="Background" Value="{StaticResource PrimaryBackground}"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
-
         <Style x:Key="ModernTabItem" TargetType="TabItem">
             <Setter Property="Background" Value="{StaticResource SecondaryBackground}"/>
             <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="15,10"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="Template">
@@ -281,7 +243,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-
         <Style TargetType="{x:Type DataGridColumnHeader}">
             <Setter Property="Background" Value="{StaticResource PrimaryBackground}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
@@ -290,7 +251,6 @@
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
         </Style>
-
         <Style TargetType="{x:Type DataGridRow}">
             <Setter Property="Background" Value="{StaticResource SecondaryBackground}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
@@ -301,7 +261,6 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
-
         <Style TargetType="{x:Type DataGridCell}">
             <Setter Property="Padding" Value="10,5"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
@@ -309,12 +268,8 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type DataGridCell}">
-                        <Border Padding="{TemplateBinding Padding}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                Background="{TemplateBinding Background}"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                        <Border Padding="{TemplateBinding Padding}" BorderBrush="{TemplateBinding BorderBrush}" Background="{TemplateBinding Background}">
+                            <ContentPresenter/>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
@@ -325,64 +280,20 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
-
         <Style TargetType="{x:Type DataGrid}">
             <Setter Property="Background" Value="{StaticResource SecondaryBackground}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="RowDetailsVisibilityMode" Value="VisibleWhenSelected"/>
-            <Setter Property="ScrollViewer.CanContentScroll" Value="true"/>
-            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
-            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
-            <Setter Property="AlternatingRowBackground" Value="#3c3c3c"/>
             <Setter Property="HeadersVisibility" Value="All"/>
             <Setter Property="GridLinesVisibility" Value="Horizontal"/>
             <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource BorderColor}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type DataGrid}">
-                        <Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-                            <ScrollViewer x:Name="DG_ScrollViewer" Focusable="false">
-                                <ScrollViewer.Template>
-                                    <ControlTemplate TargetType="{x:Type ScrollViewer}">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="*"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-                                            <Button Command="{x:Static DataGrid.SelectAllCommand}" Focusable="false" Style="{DynamicResource {ComponentResourceKey ResourceId=DataGridSelectAllButtonStyle, TypeInTargetAssembly={x:Type DataGrid}}}" Visibility="{Binding HeadersVisibility, ConverterParameter={x:Static DataGridHeadersVisibility.All}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" Width="{Binding CellsPanelHorizontalOffset, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"/>
-                                            <DataGridColumnHeadersPresenter x:Name="PART_ColumnHeadersPresenter" Grid.Column="1" Visibility="{Binding HeadersVisibility, ConverterParameter={x:Static DataGridHeadersVisibility.Column}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"/>
-                                            <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" CanContentScroll="{TemplateBinding CanContentScroll}" Grid.ColumnSpan="2" Grid.Row="1"/>
-                                            <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="2" Maximum="{TemplateBinding ScrollableHeight}" Orientation="Vertical" Grid.Row="1" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" ViewportSize="{TemplateBinding ViewportHeight}" Style="{StaticResource ModernScrollBar}"/>
-                                            <Grid Grid.Column="1" Grid.Row="2">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="{Binding NonFrozenColumnsViewportHorizontalOffset, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <ScrollBar x:Name="PART_HorizontalScrollBar" Grid.Column="1" Maximum="{TemplateBinding ScrollableWidth}" Orientation="Horizontal" Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" Value="{Binding HorizontalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" ViewportSize="{TemplateBinding ViewportWidth}" Style="{StaticResource ModernScrollBar}"/>
-                                            </Grid>
-                                        </Grid>
-                                    </ControlTemplate>
-                                </ScrollViewer.Template>
-                                <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
-                            </ScrollViewer>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
         </Style>
 
     </Window.Resources>
 
     <TabControl Style="{StaticResource ModernTabControl}">
-        <TabItem Header="Installer" Style="{StaticResource ModernTabItem}">
+        <TabItem Header="{DynamicResource InstallerTab}" Style="{StaticResource ModernTabItem}">
             <Grid Margin="15">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="420" MinWidth="380"/>
@@ -397,81 +308,65 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0"
-                            Background="{StaticResource AccentColor}"
-                            CornerRadius="8"
-                            Padding="12"
-                            Margin="0,0,0,15">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
+                        <TextBlock Text="Language:" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                        <ComboBox x:Name="cmbLanguage" SelectionChanged="cmbLanguage_SelectionChanged" Width="120" SelectedIndex="0">
+                            <ComboBoxItem Content="English" Tag="en-US"/>
+                            <ComboBoxItem Content="Indonesian" Tag="id-ID"/>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <Border Grid.Row="0" Background="{StaticResource AccentColor}" CornerRadius="8" Padding="12" Margin="0,35,0,15">
                         <StackPanel>
-                            <TextBlock Text="Perfect World Server Installer"
-                                       FontSize="16"
-                                       FontWeight="Bold"
-                                       Foreground="White"
-                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="Automated installation tool"
-                                       FontSize="11"
-                                       Foreground="White"
-                                       HorizontalAlignment="Center"
-                                       Opacity="0.9"
-                                       Margin="0,2,0,0"/>
+                            <TextBlock Text="{DynamicResource HeaderText}" FontSize="16" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{DynamicResource SubHeaderText}" FontSize="11" Foreground="White" HorizontalAlignment="Center" Opacity="0.9" Margin="0,2,0,0"/>
                         </StackPanel>
                     </Border>
 
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
-                            <GroupBox Header="Server Connection" Style="{StaticResource ModernGroupBox}">
+                            <GroupBox Header="{DynamicResource ServerConnectionGroup}" Style="{StaticResource ModernGroupBox}">
                                 <StackPanel>
-                                    <Label Content="Host IP Address:" Style="{StaticResource ModernLabel}"/>
+                                    <Label Content="{DynamicResource HostIpLabel}" Style="{StaticResource ModernLabel}"/>
                                     <TextBox x:Name="txtHost" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8"/>
 
-                                    <Label Content="SSH Username:" Style="{StaticResource ModernLabel}"/>
+                                    <Label Content="{DynamicResource SshUsernameLabel}" Style="{StaticResource ModernLabel}"/>
                                     <TextBox x:Name="txtUsername" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8"/>
 
-                                    <Label x:Name="lblPassword">
-                                        <Label.Style>
-                                            <Style TargetType="Label" BasedOn="{StaticResource ModernLabel}">
-                                                <Setter Property="Content" Value="SSH Password:"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=chkUseSshKey, Path=IsChecked}" Value="True">
-                                                        <Setter Property="Content" Value="Sudo Password (for remote commands):"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Label.Style>
-                                    </Label>
+                                    <Label x:Name="lblPassword" Content="{DynamicResource SshPasswordLabel}" Style="{StaticResource ModernLabel}"/>
                                     <PasswordBox x:Name="txtPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,0,0,8"/>
 
-                                    <CheckBox x:Name="chkUseSshKey" Content="Use SSH Key Authentication" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center" Margin="0,5,0,8" Checked="chkUseSshKey_Checked"/>
+                                    <CheckBox x:Name="chkUseSshKey" Content="{DynamicResource UseSshKeyCheckbox}" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center" Margin="0,5,0,8" Checked="chkUseSshKey_Checked"/>
 
                                     <StackPanel x:Name="pnlSshKey" Visibility="{Binding IsChecked, ElementName=chkUseSshKey, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <Label Content="Private Key File Path:" Style="{StaticResource ModernLabel}"/>
+                                        <Label Content="{DynamicResource PrivateKeyPathLabel}" Style="{StaticResource ModernLabel}"/>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <TextBox x:Name="txtKeyPath" Style="{StaticResource ModernTextBox}" IsReadOnly="True" Grid.Column="0"/>
-                                            <Button x:Name="btnBrowseKey" Content="Browse..." Grid.Column="1" Click="btnBrowseKey_Click" Margin="8,0,0,0" Style="{StaticResource ToolBarButton}"/>
+                                            <Button x:Name="btnBrowseKey" Content="{DynamicResource BrowseButton}" Grid.Column="1" Click="btnBrowseKey_Click" Margin="8,0,0,0" Style="{StaticResource ToolBarButton}"/>
                                         </Grid>
 
-                                        <Label Content="Key Passphrase (if any):" Style="{StaticResource ModernLabel}" Margin="0,8,0,5"/>
+                                        <Label Content="{DynamicResource KeyPassphraseLabel}" Style="{StaticResource ModernLabel}" Margin="0,8,0,5"/>
                                         <PasswordBox x:Name="txtKeyPassword" Style="{StaticResource ModernPasswordBox}"/>
                                     </StackPanel>
 
                                     <StackPanel Margin="0,15,0,0">
-                                        <CheckBox x:Name="chkRunAsRoot" Content="Run as root (provide root password)" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center"/>
+                                        <CheckBox x:Name="chkRunAsRoot" Content="{DynamicResource RunAsRootCheckbox}" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center"/>
                                         <PasswordBox x:Name="txtRootPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,5,0,0" Visibility="{Binding IsChecked, ElementName=chkRunAsRoot, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </StackPanel>
                             </GroupBox>
 
-                            <GroupBox Header="Server Version" Style="{StaticResource ModernGroupBox}">
+                            <GroupBox Header="{DynamicResource ServerVersionGroup}" Style="{StaticResource ModernGroupBox}">
                                 <ComboBox x:Name="cmbVersion" Style="{StaticResource ModernComboBox}"/>
                             </GroupBox>
 
-                            <GroupBox Header="Database Options" Style="{StaticResource ModernGroupBox}">
+                            <GroupBox Header="{DynamicResource DatabaseOptionsGroup}" Style="{StaticResource ModernGroupBox}">
                                 <StackPanel>
-                                    <Label Content="DB 'admin' Password (leave blank to generate):" Style="{StaticResource ModernLabel}"/>
+                                    <Label Content="{DynamicResource DbPasswordLabel}" Style="{StaticResource ModernLabel}"/>
                                     <TextBox x:Name="txtDbPassword" Style="{StaticResource ModernTextBox}"/>
                                 </StackPanel>
                             </GroupBox>
@@ -479,15 +374,8 @@
                     </ScrollViewer>
 
                     <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="0,15,0,0">
-                        <Button x:Name="btnInstall"
-                                Content="🚀 Begin Installation"
-                                Style="{StaticResource ModernButton}"
-                                Click="btnInstall_Click"
-                                Margin="0,0,0,8"/>
-
-                        <Button x:Name="btnInstallPanel"
-                                Content="🎛️ Install PW-Panel"
-                                Click="btnInstallPanel_Click">
+                        <Button x:Name="btnInstall" Content="{DynamicResource BeginInstallationButton}" Style="{StaticResource ModernButton}" Click="btnInstall_Click" Margin="0,0,0,8"/>
+                        <Button x:Name="btnInstallPanel" Content="{DynamicResource InstallPanelButton}" Click="btnInstallPanel_Click">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
                                     <Setter Property="Background" Value="{StaticResource SuccessColor}"/>
@@ -508,60 +396,41 @@
                         </Button>
                     </StackPanel>
                 </Grid>
-                <GridSplitter Grid.Column="1"
-                              Width="2"
-                              Background="{StaticResource BorderColor}"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Stretch"/>
+                <GridSplitter Grid.Column="1" Width="2" Background="{StaticResource BorderColor}" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
 
-                <GroupBox Header="Installation Log"
-                          Grid.Column="2"
-                          Style="{StaticResource ModernGroupBox}"
-                          Margin="0">
+                <GroupBox Header="{DynamicResource InstallationLogGroup}" Grid.Column="2" Style="{StaticResource ModernGroupBox}" Margin="0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                        <TextBox x:Name="txtLog"
-                                 IsReadOnly="True"
-                                 Background="#1a1a1a"
-                                 Foreground="#e0e0e0"
-                                 FontFamily="Consolas, Monaco, 'Courier New'"
-                                 FontSize="12"
-                                 TextWrapping="Wrap"
-                                 BorderThickness="0"
-                                 Padding="15"
-                                 VerticalScrollBarVisibility="Auto"
-                                 HorizontalScrollBarVisibility="Auto"/>
+                        <TextBox x:Name="txtLog" IsReadOnly="True" Background="#1a1a1a" Foreground="#e0e0e0" FontFamily="Consolas, Monaco, 'Courier New'" FontSize="12" TextWrapping="Wrap" BorderThickness="0" Padding="15" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
                     </ScrollViewer>
                 </GroupBox>
             </Grid>
         </TabItem>
-        <TabItem Header="FTP/SFTP" Style="{StaticResource ModernTabItem}">
+        <TabItem Header="{DynamicResource FtpTab}" Style="{StaticResource ModernTabItem}">
             <Grid Margin="15">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-
                 <ToolBar Grid.Row="0" Margin="0,0,0,5" Background="Transparent">
-                    <Button x:Name="btnSftpConnect" Content="🔌 Connect" Style="{StaticResource ToolBarButton}" Click="btnSftpConnect_Click"/>
-                    <Button x:Name="btnSftpDisconnect" Content="✖️ Disconnect" Style="{StaticResource ToolBarButton}" Click="btnSftpDisconnect_Click" IsEnabled="False"/>
+                    <Button x:Name="btnSftpConnect" Content="{DynamicResource ConnectButton}" Style="{StaticResource ToolBarButton}" Click="btnSftpConnect_Click"/>
+                    <Button x:Name="btnSftpDisconnect" Content="{DynamicResource DisconnectButton}" Style="{StaticResource ToolBarButton}" Click="btnSftpDisconnect_Click" IsEnabled="False"/>
                     <Separator/>
-                    <Button x:Name="btnSftpUpload" Content="⬆️ Upload" Style="{StaticResource ToolBarButton}" Click="btnSftpUpload_Click" IsEnabled="False"/>
-                    <Button x:Name="btnSftpDownload" Content="⬇️ Download" Style="{StaticResource ToolBarButton}" Click="btnSftpDownload_Click" IsEnabled="False"/>
-                    <Button x:Name="btnSftpEdit" Content="✏️ Edit" Style="{StaticResource ToolBarButton}" Click="btnSftpEdit_Click" IsEnabled="False"/>
+                    <Button x:Name="btnSftpUpload" Content="{DynamicResource UploadButton}" Style="{StaticResource ToolBarButton}" Click="btnSftpUpload_Click" IsEnabled="False"/>
+                    <Button x:Name="btnSftpDownload" Content="{DynamicResource DownloadButton}" Style="{StaticResource ToolBarButton}" Click="btnSftpDownload_Click" IsEnabled="False"/>
+                    <Button x:Name="btnSftpEdit" Content="{DynamicResource EditButton}" Style="{StaticResource ToolBarButton}" Click="btnSftpEdit_Click" IsEnabled="False"/>
                     <Separator/>
-                    <Button x:Name="btnNewFile" Content="➕ New File" Style="{StaticResource ToolBarButton}" Click="btnNewFile_Click" IsEnabled="False"/>
-                    <Button x:Name="btnNewFolder" Content="📁 New Folder" Style="{StaticResource ToolBarButton}" Click="btnNewFolder_Click" IsEnabled="False"/>
+                    <Button x:Name="btnNewFile" Content="{DynamicResource NewFileButton}" Style="{StaticResource ToolBarButton}" Click="btnNewFile_Click" IsEnabled="False"/>
+                    <Button x:Name="btnNewFolder" Content="{DynamicResource NewFolderButton}" Style="{StaticResource ToolBarButton}" Click="btnNewFolder_Click" IsEnabled="False"/>
                 </ToolBar>
-
 
                 <TextBox x:Name="txtRemotePath" Grid.Row="1" Style="{StaticResource ModernTextBox}" IsReadOnly="True" Margin="0,0,0,10"/>
 
                 <ListView x:Name="lvFiles" Grid.Row="2" Background="{StaticResource SecondaryBackground}" BorderBrush="{StaticResource BorderColor}" Foreground="{StaticResource TextPrimary}" MouseDoubleClick="lvFiles_MouseDoubleClick">
                     <ListView.ContextMenu>
                         <ContextMenu>
-                            <MenuItem Header="Set Permissions" Click="PermissionsMenuItem_Click"/>
-                            <MenuItem Header="Delete" Click="DeleteMenuItem_Click"/>
+                            <MenuItem Header="{DynamicResource SetPermissionsMenu}" Click="PermissionsMenuItem_Click"/>
+                            <MenuItem Header="{DynamicResource DeleteMenu}" Click="DeleteMenuItem_Click"/>
                         </ContextMenu>
                     </ListView.ContextMenu>
                     <ListView.View>
@@ -572,22 +441,22 @@
                                     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
                                 </Style>
                             </GridView.ColumnHeaderContainerStyle>
-                            <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}" Width="300"/>
-                            <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Size}" Width="120"/>
-                            <GridViewColumn Header="Permissions" DisplayMemberBinding="{Binding Permissions}" Width="100"/>
-                            <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding LastWriteTime, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}" Width="180"/>
+                            <GridViewColumn Header="{DynamicResource NameColumn}" DisplayMemberBinding="{Binding Name}" Width="300"/>
+                            <GridViewColumn Header="{DynamicResource SizeColumn}" DisplayMemberBinding="{Binding Size}" Width="120"/>
+                            <GridViewColumn Header="{DynamicResource PermissionsColumn}" DisplayMemberBinding="{Binding Permissions}" Width="100"/>
+                            <GridViewColumn Header="{DynamicResource ModifiedColumn}" DisplayMemberBinding="{Binding LastWriteTime, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}" Width="180"/>
                         </GridView>
                     </ListView.View>
                 </ListView>
             </Grid>
         </TabItem>
-        <TabItem Header="SQL Database" Style="{StaticResource ModernTabItem}">
+        <TabItem Header="{DynamicResource SqlDatabaseTab}" Style="{StaticResource ModernTabItem}">
             <Grid Margin="15">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <GroupBox Grid.Row="0" Header="Connection" Style="{StaticResource ModernGroupBox}">
+                <GroupBox Grid.Row="0" Header="{DynamicResource ConnectionGroup}" Style="{StaticResource ModernGroupBox}">
                     <StackPanel Orientation="Vertical">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -604,27 +473,27 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="DB Type:" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource DbTypeLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                             <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbDbType" Style="{StaticResource ModernComboBox}" Margin="5">
-                                <ComboBoxItem Content="SQL Server"/>
-                                <ComboBoxItem Content="MariaDB/MySQL"/>
+                                <ComboBoxItem Content="{DynamicResource SqlServerItem}"/>
+                                <ComboBoxItem Content="{DynamicResource MySqlItem}"/>
                             </ComboBox>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Server:" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource ServerLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtSqlServer" Margin="5" Style="{StaticResource ModernTextBox}"/>
-                            <TextBlock Grid.Row="1" Grid.Column="2" Text="Port:" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{DynamicResource PortLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="1" Grid.Column="3" x:Name="txtSqlPort" Margin="5" Style="{StaticResource ModernTextBox}"/>
-                            <TextBlock Grid.Row="1" Grid.Column="4" Text="Database:" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="4" Text="{DynamicResource DatabaseLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="1" Grid.Column="5" x:Name="txtSqlDatabase" Margin="5" Style="{StaticResource ModernTextBox}"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="User:" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource UserLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtSqlUser" Margin="5" Style="{StaticResource ModernTextBox}"/>
-                            <TextBlock Grid.Row="2" Grid.Column="2" Text="Password:" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" Text="{DynamicResource PasswordLabel}" Margin="5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                             <PasswordBox Grid.Row="2" Grid.Column="3" Grid.ColumnSpan="3" x:Name="txtSqlPassword" Margin="5" Style="{StaticResource ModernPasswordBox}"/>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Margin="5">
-                            <Button x:Name="btnSqlConnection" Content="Connect" Margin="5,0" Click="btnSqlConnection_Click" Style="{StaticResource ToolBarButton}"/>
-                            <Button x:Name="btnSqlDisconnect" Content="Disconnect" Margin="5,0" IsEnabled="False" Click="btnSqlDisconnect_Click" Style="{StaticResource ToolBarButton}"/>
+                            <Button x:Name="btnSqlConnection" Content="{DynamicResource ConnectSqlButton}" Margin="5,0" Click="btnSqlConnection_Click" Style="{StaticResource ToolBarButton}"/>
+                            <Button x:Name="btnSqlDisconnect" Content="{DynamicResource DisconnectSqlButton}" Margin="5,0" IsEnabled="False" Click="btnSqlDisconnect_Click" Style="{StaticResource ToolBarButton}"/>
                         </StackPanel>
                     </StackPanel>
                 </GroupBox>
@@ -636,7 +505,7 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <GroupBox Grid.Column="0" Header="Tables" Style="{StaticResource ModernGroupBox}">
+                    <GroupBox Grid.Column="0" Header="{DynamicResource TablesGroup}" Style="{StaticResource ModernGroupBox}">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*"/>
@@ -645,14 +514,14 @@
                             <ListView Grid.Row="0" x:Name="lvTables" Background="{StaticResource SecondaryBackground}" BorderBrush="{StaticResource BorderColor}" Foreground="{StaticResource TextPrimary}" SelectionChanged="lvTables_SelectionChanged">
                                 <ListView.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="View Data" Click="ViewTableDataMenuItem_Click"/>
-                                        <MenuItem Header="Drop Table" Click="DropTableMenuItem_Click"/>
+                                        <MenuItem Header="{DynamicResource ViewDataMenu}" Click="ViewTableDataMenuItem_Click"/>
+                                        <MenuItem Header="{DynamicResource DropTableMenu}" Click="DropTableMenuItem_Click"/>
                                     </ContextMenu>
                                 </ListView.ContextMenu>
                             </ListView>
                             <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,5,0,0">
-                                <Button x:Name="btnNewTable" Content="New Table" IsEnabled="False" Style="{StaticResource ToolBarButton}" Padding="8,5" Click="btnNewTable_Click"/>
-                                <Button x:Name="btnRefreshTables" Content="Refresh" IsEnabled="False" Margin="5,0,0,0" Style="{StaticResource ToolBarButton}" Padding="8,5" Click="btnRefreshTables_Click"/>
+                                <Button x:Name="btnNewTable" Content="{DynamicResource NewTableButton}" IsEnabled="False" Style="{StaticResource ToolBarButton}" Padding="8,5" Click="btnNewTable_Click"/>
+                                <Button x:Name="btnRefreshTables" Content="{DynamicResource RefreshButton}" IsEnabled="False" Margin="5,0,0,0" Style="{StaticResource ToolBarButton}" Padding="8,5" Click="btnRefreshTables_Click"/>
                             </StackPanel>
                         </Grid>
                     </GroupBox>
@@ -664,18 +533,15 @@
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-
-                        <DataGrid Grid.Row="0" x:Name="dgSqlResults" Margin="0" IsReadOnly="True" AutoGenerateColumns="True"/>
-
-                        <GroupBox Grid.Row="1" Header="SQL Query" Style="{StaticResource ModernGroupBox}" Margin="0,10,0,0">
+                        <DataGrid Grid.Row="0" x:Name="dgSqlResults" Margin="0" IsReadOnly="False" AutoGenerateColumns="True"/>
+                        <GroupBox Grid.Row="1" Header="{DynamicResource SqlQueryGroup}" Style="{StaticResource ModernGroupBox}" Margin="0,10,0,0">
                             <StackPanel Orientation="Vertical">
                                 <TextBox x:Name="txtSqlQuery" AcceptsReturn="True" Height="100" Margin="0,0,0,5" Style="{StaticResource ModernTextBox}"/>
-                                <Button x:Name="btnExecuteSql" Content="Execute" IsEnabled="False" Click="btnExecuteSql_Click" Style="{StaticResource ModernButton}" HorizontalAlignment="Right"/>
+                                <Button x:Name="btnExecuteSql" Content="{DynamicResource ExecuteButton}" IsEnabled="False" Click="btnExecuteSql_Click" Style="{StaticResource ModernButton}" HorizontalAlignment="Right"/>
                             </StackPanel>
                         </GroupBox>
                     </Grid>
                 </Grid>
-
             </Grid>
         </TabItem>
     </TabControl>
