@@ -20,6 +20,7 @@ using System.Windows.Data;
 using System.Globalization;
 using System.Threading;
 using System.Windows.Navigation;
+using installerapp.Properties;
 
 namespace installerapp
 {
@@ -43,12 +44,54 @@ namespace installerapp
         public MainWindow()
         {
             InitializeComponent();
+            LoadSettings();
+            this.Closing += MainWindow_Closing;
             cmbVersion.Items.Add("1.5.1");
             cmbVersion.Items.Add("1.5.3");
             cmbVersion.Items.Add("1.5.5");
             cmbVersion.SelectedIndex = 0;
             cmbDbType.SelectedIndex = 0;
             dgSqlResults.CellEditEnding += DgSqlResults_CellEditEnding;
+        }
+
+        private void MainWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            SaveSettings();
+        }
+
+        private void LoadSettings()
+        {
+            txtHost.Text = Settings.Default.Host;
+            txtUsername.Text = Settings.Default.Username;
+            txtPassword.Password = Settings.Default.Password;
+            chkUseSshKey.IsChecked = Settings.Default.UseSshKey;
+            txtKeyPath.Text = Settings.Default.PrivateKeyFilePath;
+            _privateKeyFilePath = Settings.Default.PrivateKeyFilePath;
+
+            txtSqlServer.Text = Settings.Default.SqlServer;
+            txtSqlPort.Text = Settings.Default.SqlPort;
+            txtSqlDatabase.Text = Settings.Default.SqlDatabase;
+            txtSqlUser.Text = Settings.Default.SqlUser;
+            txtSqlPassword.Password = Settings.Default.SqlPassword;
+            cmbDbType.SelectedIndex = Settings.Default.DbType;
+        }
+
+        private void SaveSettings()
+        {
+            Settings.Default.Host = txtHost.Text;
+            Settings.Default.Username = txtUsername.Text;
+            Settings.Default.Password = txtPassword.Password;
+            Settings.Default.UseSshKey = chkUseSshKey.IsChecked == true;
+            Settings.Default.PrivateKeyFilePath = _privateKeyFilePath;
+
+            Settings.Default.SqlServer = txtSqlServer.Text;
+            Settings.Default.SqlPort = txtSqlPort.Text;
+            Settings.Default.SqlDatabase = txtSqlDatabase.Text;
+            Settings.Default.SqlUser = txtSqlUser.Text;
+            Settings.Default.SqlPassword = txtSqlPassword.Password;
+            Settings.Default.DbType = cmbDbType.SelectedIndex;
+
+            Settings.Default.Save();
         }
 
         private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
