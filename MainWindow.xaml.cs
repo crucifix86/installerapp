@@ -29,6 +29,7 @@ namespace installerapp
         private bool _useRoot = false;
         private string _rootPassword = "";
         private bool _useSudo = false;
+        private string _sudoPassword = "";
         private string _privateKeyFilePath = string.Empty;
         private SftpClient? _sftpClient;
         private string _currentRemotePath = "/";
@@ -879,12 +880,26 @@ namespace installerapp
             }
 
             _useRoot = chkRunAsRoot.IsChecked == true;
+            _useSudo = chkUseSudo.IsChecked == true;
+
             if (_useRoot && string.IsNullOrWhiteSpace(txtRootPassword.Password))
             {
                 MessageBox.Show("Please provide the root password when 'Run as root' is checked.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
+            if (_useSudo && string.IsNullOrWhiteSpace(txtSudoPassword.Password))
+            {
+                MessageBox.Show("Please provide the sudo password when 'Run with sudo' is checked.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            if (_useRoot && _useSudo)
+            {
+                MessageBox.Show("Please select either 'Run as root (su)' or 'Run with sudo', not both.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
             _rootPassword = _useRoot ? txtRootPassword.Password : "";
+            _sudoPassword = _useSudo ? txtSudoPassword.Password : "";
 
             btnInstall.IsEnabled = false;
             txtLog.Clear();
@@ -893,12 +908,14 @@ namespace installerapp
             string username = txtUsername.Text;
             string userPassword = txtPassword.Password;
             string? version = cmbVersion.SelectedItem?.ToString();
+
             if (version == null)
             {
                 MessageBox.Show("Please select a server version.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 btnInstall.IsEnabled = true;
                 return;
             }
+
             string dbPassword = string.IsNullOrWhiteSpace(txtDbPassword.Text) ? Path.GetRandomFileName().Replace(".", "").Substring(0, 10) : txtDbPassword.Text;
 
             try
@@ -941,9 +958,17 @@ namespace installerapp
             }
             catch (Exception ex)
             {
-                Log($"--- A CRITICAL ERROR OCCURRED ---");
-                Log($"ERROR: {ex.Message}");
-                MessageBox.Show($"An error occurred during installation:\n\n{ex.Message}", "Installation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (ex.Message.StartsWith("Sudo is required") || ex.Message.StartsWith("Sudo password is required"))
+                {
+                    Log($"USER INPUT ERROR: {ex.Message}");
+                    MessageBox.Show(ex.Message, "Sudo Password Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                else
+                {
+                    Log($"--- A CRITICAL ERROR OCCURRED ---");
+                    Log($"ERROR: {ex.Message}");
+                    MessageBox.Show($"An error occurred during installation:\n\n{ex.Message}", "Installation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
             finally
             {
@@ -953,12 +978,7 @@ namespace installerapp
 
         private void RunFullInstallation(SshClient client, string userPassword, string version, string dbPassword)
         {
-            if (_useRoot)
-            {
-                Log("'Run as root' selected. Bypassing sudo check and using su.");
-                _useSudo = false;
-            }
-            else
+            if (!_useRoot && !_useSudo)
             {
                 Log("Checking for sudo availability...");
                 try
@@ -968,19 +988,16 @@ namespace installerapp
                     var error = testCmd.Error;
                     if (!string.IsNullOrEmpty(error) && error.Contains("sudo: command not found"))
                     {
-                        _useSudo = false;
-                        Log("Sudo command not found. Assuming user is root. Commands will be run directly.");
+                        Log("Sudo command not found and no privilege escalation method selected. Assuming user is root. Commands will be run directly.");
                     }
                     else
                     {
-                        _useSudo = true;
-                        Log("Sudo is available.");
+                        Log("Sudo is available but not explicitly selected. Running commands as the current user.");
                     }
                 }
                 catch (Exception)
                 {
-                    _useSudo = false;
-                    Log("Sudo check failed (command not found or user lacks privileges). Assuming non-sudo session.");
+                    Log("Sudo check failed. Assuming non-sudo session.");
                 }
             }
 
@@ -1252,12 +1269,26 @@ FLUSH PRIVILEGES;";
             }
 
             _useRoot = chkRunAsRoot.IsChecked == true;
+            _useSudo = chkUseSudo.IsChecked == true;
+
             if (_useRoot && string.IsNullOrWhiteSpace(txtRootPassword.Password))
             {
                 MessageBox.Show("Please provide the root password when 'Run as root' is checked.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
+            if (_useSudo && string.IsNullOrWhiteSpace(txtSudoPassword.Password))
+            {
+                MessageBox.Show("Please provide the sudo password when 'Run with sudo' is checked.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            if (_useRoot && _useSudo)
+            {
+                MessageBox.Show("Please select either 'Run as root (su)' or 'Run with sudo', not both.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
             _rootPassword = _useRoot ? txtRootPassword.Password : "";
+            _sudoPassword = _useSudo ? txtSudoPassword.Password : "";
 
             btnInstallPanel.IsEnabled = false;
             txtLog.Clear();
@@ -1342,9 +1373,17 @@ FLUSH PRIVILEGES;";
             }
             catch (Exception ex)
             {
-                Log($"--- A CRITICAL ERROR OCCURRED during Panel Installation ---");
-                Log($"ERROR: {ex.Message}");
-                MessageBox.Show($"An error occurred during panel installation:\n\n{ex.Message}", "Installation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (ex.Message.StartsWith("Sudo is required") || ex.Message.StartsWith("Sudo password is required"))
+                {
+                    Log($"USER INPUT ERROR: {ex.Message}");
+                    MessageBox.Show(ex.Message, "Sudo Password Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                else
+                {
+                    Log($"--- A CRITICAL ERROR OCCURRED during Panel Installation ---");
+                    Log($"ERROR: {ex.Message}");
+                    MessageBox.Show($"An error occurred during panel installation:\n\n{ex.Message}", "Installation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
             finally
             {
@@ -1358,12 +1397,7 @@ FLUSH PRIVILEGES;";
 
         private string RunPanelInstallation(SshClient client, string userPassword, string dbUser, string dbPassword)
         {
-            if (_useRoot)
-            {
-                Log("'Run as root' selected. Bypassing sudo check and using su.");
-                _useSudo = false;
-            }
-            else
+            if (!_useRoot && !_useSudo)
             {
                 Log("Checking for sudo availability for Panel installation...");
                 try
@@ -1373,18 +1407,17 @@ FLUSH PRIVILEGES;";
                     var error = testCmd.Error;
                     if (!string.IsNullOrEmpty(error) && error.Contains("sudo: command not found"))
                     {
-                        _useSudo = false;
+                        Log("Sudo command not found and no privilege escalation method selected. Assuming user is root. Commands will be run directly.");
                     }
                     else
                     {
-                        _useSudo = true;
+                        Log("Sudo is available but not explicitly selected. Running commands as the current user.");
                     }
                 }
                 catch (Exception)
                 {
-                    _useSudo = false;
+                    Log("Sudo check failed. Assuming non-sudo session.");
                 }
-                Log(_useSudo ? "Sudo is available." : "Sudo not found or user lacks privileges. Assuming root session.");
             }
 
             string osRelease = ExecuteCommand(client, userPassword, "cat /etc/os-release");
@@ -1615,10 +1648,14 @@ FLUSH PRIVILEGES;";
                 Log($"> su -c \"{command}\"");
                 commandToExecute = $"echo '{_rootPassword}' | su - -c '{escapedCommand}'";
             }
-            else if (_useSudo && !string.IsNullOrWhiteSpace(userPassword))
+            else if (_useSudo)
             {
+                if (string.IsNullOrWhiteSpace(_sudoPassword))
+                {
+                    throw new Exception("Sudo password is required but not provided.");
+                }
                 Log($"> sudo {command}");
-                commandToExecute = $"echo '{userPassword}' | sudo -S -- bash -c '{escapedCommand}'";
+                commandToExecute = $"echo '{_sudoPassword}' | sudo -S -- bash -c '{escapedCommand}'";
             }
             else
             {

@@ -6,7 +6,7 @@
         mc:Ignorable="d"
         Title="{DynamicResource Title}"
         Height="750" Width="900"
-        MinHeight="650" MinWidth="750"
+        MinWidth="750"
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized"
         Background="#1e1e1e"
@@ -360,6 +360,10 @@
                                     <StackPanel Margin="0,15,0,0">
                                         <CheckBox x:Name="chkRunAsRoot" Content="{DynamicResource RunAsRootCheckbox}" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center"/>
                                         <PasswordBox x:Name="txtRootPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,5,0,0" Visibility="{Binding IsChecked, ElementName=chkRunAsRoot, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,15,0,0">
+                                        <CheckBox x:Name="chkUseSudo" Content="Run with sudo" Foreground="{StaticResource TextSecondary}" VerticalContentAlignment="Center"/>
+                                        <PasswordBox x:Name="txtSudoPassword" Style="{StaticResource ModernPasswordBox}" Margin="0,5,0,0" Visibility="{Binding IsChecked, ElementName=chkUseSudo, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </StackPanel>
                             </GroupBox>
